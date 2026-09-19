@@ -212,6 +212,7 @@ export class Session {
     const ctx = this.songContext();
     const running = this.songRunning;
     const bar = running ? barAt(song, ctx.bar) : null;
+    const nextBar = running ? barAt(song, ctx.bar + 1) : null;
     return {
       id,
       title: song.title,
@@ -220,8 +221,9 @@ export class Session {
       beat: ctx.beat,
       beatPhase: ctx.beatPhase,
       chord: ctx.chord,
+      nextChord: nextBar?.chord ?? null,
       lyric: bar?.lyric ?? null,
-      nextLyric: running ? (barAt(song, ctx.bar + 1).lyric ?? null) : null,
+      nextLyric: nextBar?.lyric ?? null,
       section: bar?.section ?? null,
       barCount: barCount(song),
       running,

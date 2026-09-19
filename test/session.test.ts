@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '@/app/config';
+import { getSong } from '@/song/songs';
 import { Session } from '@/app/session';
 import { bus } from '@/core/bus';
 import { FREEPLAY_CONTEXT } from '@/audio/modes';
@@ -138,6 +139,27 @@ describe('Session seams', () => {
     s.stop();
     hit(); // a stopped session no longer listens
     expect(s.info().players[0].score.miss).toBe(0);
+  });
+
+  it('reports the chart position, the chord and the next bar\'s chord', () => {
+    const s = makeSession();
+    expect(s.info().song).toMatchObject({ chord: null, nextChord: null, running: false });
+
+    // Stand in for a running song clock (the real one needs an audio context).
+    const song = getSong('perfect'); // verse G Em C D | chorus G Em C D
+    let bar = 0;
+    const context = (): SongContext => ({ ...FREEPLAY_CONTEXT, bpm: song.bpm, bar, chord: song.sections[0].bars[bar % 4].chord });
+    (s as unknown as { songClock: unknown }).songClock = { song, running: true, beatsPerBar: 4, context, opts: {}, dispose() {} };
+
+    expect(s.info().song).toMatchObject({ title: 'Perfect', running: true, chord: 'G', nextChord: 'Em', section: 'verse' });
+    bar = 3;
+    expect(s.info().song).toMatchObject({ chord: 'D', nextChord: 'G' });
+    bar = 7; // last bar of the chart: the next chord wraps to the top
+    expect(s.info().song.nextChord).toBe('G');
+    bar = 8 + 5; // past the end the chart loops
+    expect(s.info().song).toMatchObject({ nextChord: 'C', section: 'chorus' });
+    s.stop();
+    expect(s.info().song.nextChord).toBeNull();
   });
 
   it('pause freezes the score and resume keeps it', () => {
