@@ -8,7 +8,9 @@ import { bus } from '@/core/bus';
 import { Overlay } from '@/render/overlay';
 import { Recorder, Replayer, type Recording, type ReplayerOptions } from '@/vision/recorder';
 import { AudioEngine } from '@/audio/engine';
-import { DrumsVoice } from '@/audio/voices/drumsVoice';
+import { HardMode } from '@/audio/modes';
+import { InstrumentController } from './controller';
+import { createInstrument } from './instruments';
 
 export interface SessionStats {
   fps: number;
@@ -25,14 +27,15 @@ export type SessionPhase = 'idle' | 'camera' | 'model' | 'audio' | 'running' | '
 const HAND_COLORS = ['#ff5c8a', '#5cd6ff', '#ffd75c', '#8aff5c'];
 
 /**
- * Top-level runtime: camera → hand landmarker → overlay, on the video frame
- * loop. Commit 4 inserts the frame adapter/tracker between landmarker and
- * overlay; commit 8 adds instrument controllers.
+ * Top-level runtime: camera → hand landmarker → frame adapter → instrument
+ * controller (detectors → bus → mode → voice) → overlay, on the video frame
+ * loop. Player 0 plays drums in hard mode until the pickers arrive (commit 17).
  */
 export class Session {
   readonly camera: Camera;
   readonly overlay: Overlay;
   readonly audio: AudioEngine;
+  readonly controller: InstrumentController;
   readonly stats: SessionStats = {
     fps: 0,
     inferenceMs: 0,
@@ -62,7 +65,9 @@ export class Session {
     this.config = config;
     this.adapter = new FrameAdapter(config);
     this.audio = new AudioEngine(config.audio);
-    void this.audio.addVoice(new DrumsVoice(() => this.audio.output));
+    const drums = createInstrument('drums', { config, output: () => this.audio.output, playerId: 0 });
+    void this.audio.addVoice(drums.voice);
+    this.controller = new InstrumentController({ playerId: 0, instrument: drums, resolver: new HardMode(), audio: this.audio });
   }
 
   async start(onPhase?: (phase: SessionPhase, detail?: string) => void): Promise<void> {
@@ -143,6 +148,7 @@ export class Session {
     this.replayer.stop();
     this.replayer = null;
     this.adapter.reset();
+    this.controller.reset();
     this.fpsMeter.reset();
     if (this.loop && !this.disposed) this.loop.start();
   }
@@ -159,6 +165,7 @@ export class Session {
     this.stats.height = this.camera.height;
     this.fpsMeter.reset();
     this.adapter.reset();
+    this.controller.reset();
     this.loop.start();
   }
 
@@ -173,6 +180,7 @@ export class Session {
   stop(): void {
     this.disposed = true;
     this.teardown();
+    this.controller.dispose();
     this.onPhase('idle');
   }
 
@@ -197,12 +205,16 @@ export class Session {
   /** Everything downstream of the frame adapter; fed by the camera loop or a replay. */
   private consume(frame: VisionFrame): void {
     this.lastFrame = frame;
+    // Sound first: the controller triggers the voice synchronously, so nothing
+    // below (recording, drawing) adds to the motion-to-sound latency.
+    this.controller.onFrame(frame);
     this.recorder.push(frame);
     bus.emit({ type: 'vision.frame', frame });
 
     this.overlay.syncSize();
     this.overlay.aspect = frame.aspect;
     this.overlay.clear();
+    this.controller.instrument.overlay.draw(this.overlay.ctx, frame, this.overlay.toPx);
 
     if (this.config.debug.skeleton) {
       for (const hand of frame.hands) {

@@ -240,6 +240,8 @@ export interface Instrument {
   voice: Voice;
   zones: Zone[];
   overlay: OverlayLayer;
+  /** Release bus subscriptions and other resources. */
+  dispose?(): void;
 }
 
 // ---------------------------------------------------------------------------

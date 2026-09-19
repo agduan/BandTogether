@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "vendor": "bash scripts/vendor-assets.sh"
+    "vendor": "bash scripts/vendor-assets.sh",
+    "fixtures": "node scripts/make-fixtures.mjs"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "1.0.1",

@@ -10,6 +10,16 @@
  * frame-height units ("h"), velocities in h/s, times in ms.
  */
 
+/**
+ * One drum pad: x-range as fractions of the frame width, strike line y in
+ * frame-height units. Converted to display space per frame (x · aspect).
+ */
+export interface KitPad {
+  x0: number;
+  x1: number;
+  y: number;
+}
+
 export interface Config {
   camera: {
     width: number;
@@ -56,6 +66,10 @@ export interface Config {
     dirCos: number;
     anticipateMs: number;
     padTolerance: number;
+    /** Drawn half-height of a pad around its strike line (h). Visual only. */
+    padHalfHeight: number;
+    /** Kit layout keyed by sample name. Override a leaf with e.g. `?drum.kit.snare.y=0.7`. */
+    kit: Record<string, KitPad>;
   };
   strum: {
     hyst: number;
@@ -121,6 +135,18 @@ export const DEFAULT_CONFIG: Config = {
     dirCos: 0.6,
     anticipateMs: 0,
     padTolerance: 0.03,
+    padHalfHeight: 0.06,
+    // Arranged like a kit seen from the drummer's seat, in the mirrored view:
+    // hi-hat and snare on the left, toms across the top, crash top-right,
+    // kick low in the middle (awkward by hand; easy mode auto-plays it).
+    kit: {
+      hihat: { x0: 0.17, x1: 0.34, y: 0.5 },
+      snare: { x0: 0.31, x1: 0.51, y: 0.68 },
+      tom1: { x0: 0.53, x1: 0.7, y: 0.5 },
+      tom2: { x0: 0.73, x1: 0.87, y: 0.55 },
+      crash: { x0: 0.79, x1: 0.96, y: 0.4 },
+      kick: { x0: 0.48, x1: 0.65, y: 0.85 },
+    },
   },
   strum: {
     hyst: 0.02,

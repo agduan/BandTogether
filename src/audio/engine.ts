@@ -21,7 +21,6 @@ export class AudioEngine {
   readonly latency = new LatencyMeter();
   private master: Tone.Gain | null = null;
   private readonly voices = new Map<string, Voice>();
-  private unsubscribe: (() => void) | null = null;
   private gestureCleanup: (() => void) | null = null;
 
   constructor(private readonly config: Config['audio']) {}
@@ -32,7 +31,6 @@ export class AudioEngine {
       this.state = 'loading';
       Tone.setContext(new Tone.Context({ latencyHint: this.config.latencyHint, lookAhead: this.config.lookAhead }));
       this.master = new Tone.Gain(0.9).toDestination();
-      this.unsubscribe = bus.onAny((e) => this.onEvent(e));
       await Promise.all([...this.voices.values()].map((v) => v.load()));
     }
     try {
@@ -66,8 +64,6 @@ export class AudioEngine {
   }
 
   stop(): void {
-    this.unsubscribe?.();
-    this.unsubscribe = null;
     this.gestureCleanup?.();
     this.gestureCleanup = null;
     for (const v of this.voices.values()) v.releaseAll();
@@ -100,20 +96,7 @@ export class AudioEngine {
     };
   }
 
-  /**
-   * Direct event → voice routing used until the per-player controllers and
-   * note resolvers arrive (commit 8). Drum hits play the pad's sample as-is.
-   */
-  private onEvent(e: Parameters<Parameters<typeof bus.onAny>[0]>[0]): void {
-    if (e.type !== 'drum.hit') return;
-    const voice = this.voices.get('drums');
-    if (!voice || this.state !== 'running') return;
-    const detectT = performance.now();
-    voice.trigger({ sample: e.pad, velocity: e.velocity });
-    this.stamp(e, detectT);
-  }
-
-  /** Publish a latency sample for a sound just scheduled. */
+  /** Publish a latency sample for a sound just scheduled (called by the instrument controllers). */
   stamp(source: InstrumentEvent, detectT: number): void {
     const ev: AudioPlayedEvent = { type: 'audio.played', frameT: source.t, detectT, audioT: performance.now(), source: source.type };
     this.latency.record(ev, this.outputLatencyMs);

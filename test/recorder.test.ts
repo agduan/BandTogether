@@ -68,9 +68,9 @@ describe('Replayer', () => {
   });
 });
 
-describe('fixture: synthetic-hits', () => {
+describe('fixture: drums_5hits', () => {
   it('loads with two tracked hands, 30 fps timing, and five annotated hits', () => {
-    const rec = loadFixture('synthetic-hits');
+    const rec = loadFixture('drums_5hits');
     expect(rec.frames.length).toBeGreaterThan(150);
     expect(rec.frames[0].hands.map((h) => h.trackId)).toEqual([1, 2]);
     expect(rec.frames[1].t - rec.frames[0].t).toBeCloseTo(1000 / 30, 2);
