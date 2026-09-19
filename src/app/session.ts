@@ -7,6 +7,8 @@ import { LM, type VisionFrame } from '@/core/types';
 import { bus } from '@/core/bus';
 import { Overlay } from '@/render/overlay';
 import { Recorder, Replayer, type Recording, type ReplayerOptions } from '@/vision/recorder';
+import { AudioEngine } from '@/audio/engine';
+import { DrumsVoice } from '@/audio/voices/drumsVoice';
 
 export interface SessionStats {
   fps: number;
@@ -18,7 +20,7 @@ export interface SessionStats {
   usingVideoFrameCallback: boolean;
 }
 
-export type SessionPhase = 'idle' | 'camera' | 'model' | 'running' | 'error';
+export type SessionPhase = 'idle' | 'camera' | 'model' | 'audio' | 'running' | 'error';
 
 const HAND_COLORS = ['#ff5c8a', '#5cd6ff', '#ffd75c', '#8aff5c'];
 
@@ -30,6 +32,7 @@ const HAND_COLORS = ['#ff5c8a', '#5cd6ff', '#ffd75c', '#8aff5c'];
 export class Session {
   readonly camera: Camera;
   readonly overlay: Overlay;
+  readonly audio: AudioEngine;
   readonly stats: SessionStats = {
     fps: 0,
     inferenceMs: 0,
@@ -58,6 +61,8 @@ export class Session {
     this.overlay = new Overlay(canvas);
     this.config = config;
     this.adapter = new FrameAdapter(config);
+    this.audio = new AudioEngine(config.audio);
+    void this.audio.addVoice(new DrumsVoice(() => this.audio.output));
   }
 
   async start(onPhase?: (phase: SessionPhase, detail?: string) => void): Promise<void> {
@@ -69,9 +74,15 @@ export class Session {
       report(phase, detail);
     };
     try {
+      // Audio first: it is quick, and the Start click that got us here counts
+      // as the user gesture the browser wants for resuming the context.
+      this.onPhase('audio');
+      await this.audio.start();
+      if (this.disposed) return this.teardown();
+
       this.onPhase('camera');
       await this.camera.start(this.config.camera);
-      if (this.disposed) return;
+      if (this.disposed) return this.teardown();
 
       this.onPhase('model');
       this.tracker = await HandTracker.create(this.config.vision);
@@ -166,6 +177,7 @@ export class Session {
   }
 
   private teardown(): void {
+    this.audio.stop();
     this.replayer?.stop();
     this.replayer = null;
     this.loop?.stop();

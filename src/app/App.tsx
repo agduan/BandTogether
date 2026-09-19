@@ -8,6 +8,7 @@ const PHASE_TEXT: Record<SessionPhase, string> = {
   idle: '',
   camera: 'Opening camera…',
   model: 'Loading hand model…',
+  audio: 'Loading sounds…',
   running: '',
   error: 'Something went wrong',
 };
@@ -120,7 +121,8 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
           {stats && phase === 'running'
             ? `${stats.fps.toFixed(0)} fps · inference ${stats.inferenceMs.toFixed(1)} ms · ` +
               `${stats.hands} hand${stats.hands === 1 ? '' : 's'} · ${stats.delegate} · ` +
-              `${stats.width}×${stats.height} · ${stats.usingVideoFrameCallback ? 'rVFC' : 'rAF'}`
+              `${stats.width}×${stats.height} · ${stats.usingVideoFrameCallback ? 'rVFC' : 'rAF'} · ` +
+              `audio ${sessionRef.current?.audio.state ?? '-'}`
             : detail}
         </span>
         <button className="stage__debug-toggle" onClick={() => setShowDebug((v) => !v)} title="Toggle debug panel (`)">

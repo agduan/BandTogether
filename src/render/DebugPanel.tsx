@@ -139,6 +139,14 @@ export function DebugPanel({ session, config, onClose }: Props) {
       </section>
 
       <section>
+        <h4>Audio · latency</h4>
+        <p className="debug__row">
+          {session.audio.state} · pipeline {session.audio.latency.stats.pipelineMs.toFixed(1)} ms (frame → scheduled) ·
+          output {session.audio.latency.stats.outputMs.toFixed(1)} ms · {session.audio.latency.stats.count} sounds
+        </p>
+      </section>
+
+      <section>
         <h4>Last event</h4>
         <p className="debug__event">{lastEvent}</p>
         <p className="debug__muted">
