@@ -162,6 +162,11 @@ body {
   color: #0b0d12;
 }
 
+.stage__btn--paused {
+  background: #ffd75c;
+  color: #0b0d12;
+}
+
 .stage__btn--hard {
   background: #ff5c8a;
   color: #0b0d12;

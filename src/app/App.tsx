@@ -62,6 +62,7 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
   const [mode, setMode] = useState<PlayMode>(config.play.mode);
   const [songId, setSongId] = useState(config.play.song);
   const [songRunning, setSongRunning] = useState(false);
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
@@ -72,6 +73,7 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
       // Spacebar = kick pedal (any USB keyboard on the floor works). Always a kick, in both modes.
       if (ev.code === 'Space') {
         ev.preventDefault();
+        if (sessionRef.current?.paused) return;
         if (!ev.repeat) bus.emit({ type: 'drum.hit', t: performance.now(), playerId: 0, pad: 'kick', velocity: 0.9 });
       }
     };
@@ -103,6 +105,7 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
     const statsTimer = window.setInterval(() => {
       setStats({ ...session.stats });
       setSongRunning(session.songRunning);
+      setPaused(session.paused);
     }, 250);
 
     return () => {
@@ -134,6 +137,14 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
     setSongRunning(s.songRunning);
   };
 
+  const togglePause = () => {
+    const s = sessionRef.current;
+    if (!s) return;
+    if (s.paused) s.resume();
+    else s.pause();
+    setPaused(s.paused);
+  };
+
   const pickSong = (id: string) => {
     setSongId(id);
     const s = sessionRef.current;
@@ -162,10 +173,19 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
             ? `${stats.fps.toFixed(0)} fps · inference ${stats.inferenceMs.toFixed(1)} ms · ` +
               `${stats.hands} hand${stats.hands === 1 ? '' : 's'} · ${stats.delegate} · ` +
               `${stats.width}×${stats.height} · ${stats.usingVideoFrameCallback ? 'rVFC' : 'rAF'} · ` +
-              `audio ${sessionRef.current?.audio.state ?? '-'}`
+              `audio ${sessionRef.current?.audio.state ?? '-'}` +
+              (paused ? ' · PAUSED' : '')
             : detail}
         </span>
         <span className="stage__controls">
+          <button
+            className={`stage__btn ${paused ? 'stage__btn--paused' : ''}`}
+            onClick={togglePause}
+            disabled={phase !== 'running'}
+            title="Freeze the picture and stop tracking, sound and the song. Click again to carry on."
+          >
+            {paused ? '▶ resume band' : '⏸ pause band'}
+          </button>
           <button
             className={`stage__btn ${mode === 'easy' ? 'stage__btn--easy' : 'stage__btn--hard'}`}
             onClick={toggleMode}

@@ -74,6 +74,15 @@ export class SongClock {
     this.running = false;
   }
 
+  /** Hold the Transport where it is; `resume()` continues from the same beat. */
+  pause(): void {
+    if (this.running) Tone.getTransport().pause();
+  }
+
+  resume(): void {
+    if (this.running && Tone.getTransport().state !== 'started') Tone.getTransport().start();
+  }
+
   dispose(): void {
     this.stop();
     this.click?.dispose();

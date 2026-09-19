@@ -63,6 +63,7 @@ export class Session {
   lastFrame: VisionFrame | null = null;
   private readonly fpsMeter = new FpsMeter();
   private disposed = false;
+  private isPaused = false;
   private onPhase: (phase: SessionPhase, detail?: string) => void = () => {};
 
   constructor(video: HTMLVideoElement, canvas: HTMLCanvasElement, config: Config) {
@@ -119,6 +120,7 @@ export class Session {
       kickVoice: this.controller.instrument.id === 'drums' ? this.controller.instrument.voice : null,
     });
     this.songClock.start();
+    if (this.isPaused) this.songClock.pause();
   }
 
   stopSong(): void {
@@ -174,6 +176,52 @@ export class Session {
     }
   }
 
+  // --- pause ---------------------------------------------------------------
+
+  get paused(): boolean {
+    return this.isPaused;
+  }
+
+  /**
+   * Freeze the band: the picture holds its last frame, no frames are tracked,
+   * detected, recorded or drawn, the song holds its beat and ringing notes are
+   * cut. The camera stream and the model stay open so `resume()` is instant.
+   */
+  pause(): void {
+    if (this.isPaused || !this.loop) return;
+    this.isPaused = true;
+    this.loop.stop();
+    if (this.replayer) {
+      this.replayer.stop();
+      this.replayer = null;
+    }
+    this.camera.video.pause();
+    this.songClock?.pause();
+    this.controller.instrument.voice.releaseAll();
+    const aspect = this.lastFrame?.aspect ?? this.camera.aspect;
+    this.overlay.drawLabel('PAUSED', { x: aspect / 2, y: 0.08 }, '#ffd75c');
+  }
+
+  resume(): void {
+    if (!this.isPaused) return;
+    this.clearPause();
+    if (!this.loop || this.disposed) return;
+    // Tracks and detector state are stale after a freeze: start clean so the
+    // first frame back can't fire a phantom hit.
+    this.adapter.reset();
+    this.controller.reset();
+    this.fpsMeter.reset();
+    this.loop.start();
+  }
+
+  /** Leave the paused state without touching the frame loop (callers restart it themselves). */
+  private clearPause(): void {
+    if (!this.isPaused) return;
+    this.isPaused = false;
+    void this.camera.video.play().catch(() => {});
+    this.songClock?.resume();
+  }
+
   /** 'camera' while the live loop feeds frames, 'replay' while a recording does. */
   get source(): 'camera' | 'replay' {
     return this.replayer ? 'replay' : 'camera';
@@ -197,6 +245,7 @@ export class Session {
 
   /** Pause the camera loop and drive the pipeline from a recording instead. */
   replay(rec: Recording, opts: ReplayerOptions = {}): void {
+    this.clearPause();
     this.stopReplay();
     this.loop?.stop();
     this.replayer = new Replayer(rec, (frame) => this.consume(frame), opts);
@@ -218,6 +267,7 @@ export class Session {
   async switchCamera(deviceId: string): Promise<void> {
     this.config.camera.deviceId = deviceId;
     if (!this.loop) return;
+    this.clearPause();
     this.stopReplay();
     this.loop.stop();
     await this.camera.start(this.config.camera);
@@ -247,6 +297,7 @@ export class Session {
   }
 
   private teardown(): void {
+    this.isPaused = false;
     this.stopSong();
     this.audio.stop();
     this.replayer?.stop();
