@@ -2,8 +2,9 @@ import type { Config } from './config';
 import { FpsMeter, FrameLoop } from '@/core/loop';
 import { Camera, type CameraInfo } from '@/vision/camera';
 import { HandTracker } from '@/vision/handLandmarker';
-import { landmarksToDisplay } from '@/vision/frameAdapter';
-import { LM } from '@/core/types';
+import { FrameAdapter } from '@/vision/frameAdapter';
+import { LM, type VisionFrame } from '@/core/types';
+import { bus } from '@/core/bus';
 import { Overlay } from '@/render/overlay';
 
 export interface SessionStats {
@@ -40,7 +41,10 @@ export class Session {
 
   private config: Config;
   private tracker: HandTracker | null = null;
+  private adapter: FrameAdapter;
   private loop: FrameLoop | null = null;
+  /** Most recent adapted frame, for consumers that poll instead of subscribing. */
+  lastFrame: VisionFrame | null = null;
   private readonly fpsMeter = new FpsMeter();
   private disposed = false;
   private onPhase: (phase: SessionPhase, detail?: string) => void = () => {};
@@ -49,6 +53,7 @@ export class Session {
     this.camera = new Camera(video);
     this.overlay = new Overlay(canvas);
     this.config = config;
+    this.adapter = new FrameAdapter(config);
   }
 
   async start(onPhase?: (phase: SessionPhase, detail?: string) => void): Promise<void> {
@@ -98,6 +103,7 @@ export class Session {
     this.stats.width = this.camera.width;
     this.stats.height = this.camera.height;
     this.fpsMeter.reset();
+    this.adapter.reset();
     this.loop.start();
   }
 
@@ -127,26 +133,28 @@ export class Session {
     if (!this.tracker) return;
     const { result, inferenceMs } = this.tracker.detect(video, t);
     const aspect = this.camera.aspect;
+    const frame = this.adapter.adapt(result, t, aspect, inferenceMs);
+    this.lastFrame = frame;
+    bus.emit({ type: 'vision.frame', frame });
 
     this.overlay.syncSize();
     this.overlay.aspect = aspect;
     this.overlay.clear();
 
-    result.landmarks.forEach((landmarks, i) => {
-      const points = landmarksToDisplay(landmarks, aspect);
-      const color = HAND_COLORS[i % HAND_COLORS.length];
-      this.overlay.drawHand(points, { color });
-      const hand = result.handedness[i]?.[0];
-      if (hand) {
-        // Raw MediaPipe label, uncorrected: used to verify vision.swapHandedness in commit 4.
-        this.overlay.drawLabel(`${hand.categoryName} ${hand.score.toFixed(2)}`, points[LM.WRIST], color);
-      }
-    });
+    for (const hand of frame.hands) {
+      // Colour by track id so a stable identity is visible at a glance.
+      const color = HAND_COLORS[(hand.trackId - 1) % HAND_COLORS.length];
+      this.overlay.drawHand(hand.smooth, { color });
+      // Corrected + voted label. Raise only your right hand: it must read "R".
+      // If it reads "L", set vision.swapHandedness=true (URL: ?vision.swapHandedness=true).
+      const label = `#${hand.trackId} ${hand.handedness === 'Left' ? 'L' : 'R'} ${hand.handednessScore.toFixed(2)}`;
+      this.overlay.drawLabel(label, hand.smooth[LM.WRIST], color);
+    }
 
     this.stats.fps = this.fpsMeter.tick(t);
     this.stats.inferenceMs = this.stats.inferenceMs
       ? this.stats.inferenceMs + 0.1 * (inferenceMs - this.stats.inferenceMs)
       : inferenceMs;
-    this.stats.hands = result.landmarks.length;
+    this.stats.hands = frame.hands.length;
   }
 }
