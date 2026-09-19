@@ -85,15 +85,16 @@ export class Overlay {
     const scale = this.canvas.height / 480;
     ctx.save();
     ctx.font = `${Math.round(14 * scale)}px system-ui, sans-serif`;
-    ctx.textBaseline = 'bottom';
+    ctx.textBaseline = 'middle';
     const pad = 4 * scale;
     const w = ctx.measureText(text).width + pad * 2;
     const h = 18 * scale;
+    const centerY = p.y - 6 * scale - h / 2;
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(p.x - w / 2, p.y - h - 6 * scale, w, h);
     ctx.fillStyle = color;
     ctx.textAlign = 'center';
-    ctx.fillText(text, p.x, p.y - 6 * scale);
+    ctx.fillText(text, p.x, centerY);
     ctx.restore();
   }
 }

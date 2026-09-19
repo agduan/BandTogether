@@ -464,7 +464,7 @@ summary:focus-visible {
 
 .stage__start span {
   margin-right: 7px;
-  font-size: 0.78em;
+  font-size: 1.05em;
 }
 
 .stage__start:hover {
@@ -490,20 +490,48 @@ summary:focus-visible {
   font-weight: 400;
 }
 
-/* Footer: config dump */
+/* Live tuning controls */
 .app__config {
   color: var(--text-faint);
   font-size: 0.8rem;
 }
 
 .app__config summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  list-style: none;
   cursor: pointer;
   user-select: none;
 }
 
-.app__config p {
-  margin: 7px 0 0;
-  line-height: 1.4;
+.app__config summary::-webkit-details-marker {
+  display: none;
+}
+
+.app__config summary > span::before {
+  content: '▸';
+  display: inline-block;
+  width: 1em;
+}
+
+.app__config[open] summary > span::before {
+  content: '▾';
+}
+
+.app__config summary button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 0.68rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.app__config summary button:hover {
+  color: var(--text);
 }
 
 .app__config code {
@@ -511,18 +539,111 @@ summary:focus-visible {
   font-size: 0.75rem;
 }
 
-.app__config pre {
-  margin: 10px 0 0;
-  max-height: 240px;
-  overflow-x: auto;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  padding: 12px 14px;
-  border-radius: 2px;
+.config-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  max-height: min(330px, 46vh);
+  margin-top: 12px;
+  padding-right: 6px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.debug .config-controls {
+  max-height: none;
+}
+
+.config-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px 8px;
   color: var(--text-muted);
   font-family: var(--mono);
-  font-size: 0.75rem;
-  line-height: 1.45;
+  font-size: 0.68rem;
+}
+
+.config-control > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-control > code {
+  color: var(--text);
+  font-size: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.config-control input[type='range'] {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 14px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.config-control input[type='range']::-webkit-slider-runnable-track {
+  height: 1px;
+  background: var(--border-strong);
+}
+
+.config-control input[type='range']::-webkit-slider-thumb {
+  width: 10px;
+  height: 10px;
+  margin-top: -4.5px;
+  border: 1px solid var(--surface);
+  border-radius: 50%;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--accent);
+}
+
+.config-control input[type='range']::-moz-range-track {
+  height: 1px;
+  border: 0;
+  background: var(--border-strong);
+}
+
+.config-control input[type='range']::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.config-control input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
+.config-controls__footer {
+  margin: 2px 0 0;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.config-controls__footer > div {
+  display: flex;
+  gap: 5px;
+}
+
+.config-controls__footer button {
+  margin-top: 7px;
+  padding: 3px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.68rem;
 }
 
 /* Debug panel */
@@ -608,22 +729,6 @@ summary:focus-visible {
 .debug__controls button:hover,
 .debug__muted button:hover {
   background: var(--sunken);
-}
-
-.debug__control {
-  display: grid;
-  grid-template-columns: 11rem 1fr 4rem;
-  gap: 8px;
-  align-items: center;
-  margin: 2px 0;
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.debug__control input[type='range'] {
-  width: 100%;
-  accent-color: var(--accent);
 }
 
 .debug input[type='checkbox'] {

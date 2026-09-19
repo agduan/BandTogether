@@ -4,7 +4,7 @@ import { Session, type SessionPhase, type SessionStats } from './session';
 import type { CameraInfo } from '@/vision/camera';
 import { bus } from '@/core/bus';
 import type { PlayMode } from '@/core/types';
-import { DebugPanel } from '@/render/DebugPanel';
+import { ConfigControls, DebugPanel, resetConfigControls } from '@/render/DebugPanel';
 import { SONGS } from '@/song/songs';
 
 const PHASE_TEXT: Record<SessionPhase, string> = {
@@ -60,6 +60,7 @@ function Stage({
   const [songId, setSongId] = useState(config.play.song);
   const [songRunning, setSongRunning] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [, refreshConfig] = useState(0);
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
@@ -275,11 +276,21 @@ function Stage({
             </button>
           </div>
           <details className="app__config">
-            <summary>Config</summary>
-            <p>
-              Override with URL params, e.g. <code>?drum.vMin=1.4</code>
-            </p>
-            <pre>{JSON.stringify(config, null, 2)}</pre>
+            <summary>
+              <span>Config</span>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  resetConfigControls(config);
+                  refreshConfig((value) => value + 1);
+                }}
+              >
+                Reset
+              </button>
+            </summary>
+            <ConfigControls config={config} />
           </details>
         </div>
       </div>

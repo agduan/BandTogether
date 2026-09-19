@@ -48,6 +48,65 @@ export function overridesQuery(config: Config): string {
   return parts.length ? `?${parts.join('&')}` : '';
 }
 
+export function resetConfigControls(config: Config): void {
+  for (const control of CONTROLS) {
+    setLeaf(config, control.path, getLeaf(DEFAULT_CONFIG, control.path));
+  }
+}
+
+export function ConfigControls({ config }: { config: Config }) {
+  const [, force] = useState(0);
+  const query = overridesQuery(config);
+
+  return (
+    <div className="config-controls">
+      {CONTROLS.map((c) => {
+        const value = getLeaf(config, c.path);
+        return (
+          <label key={c.path} className="config-control">
+            <span>{c.path}</span>
+            {typeof value === 'boolean' ? (
+              <input
+                type="checkbox"
+                checked={value}
+                onChange={(e) => {
+                  setLeaf(config, c.path, e.target.checked);
+                  force((n) => n + 1);
+                }}
+              />
+            ) : (
+              <>
+                <code>{String(value)}</code>
+                <input
+                  type="range"
+                  min={c.min}
+                  max={c.max}
+                  step={c.step}
+                  value={value as number}
+                  onChange={(e) => {
+                    setLeaf(config, c.path, Number(e.target.value));
+                    force((n) => n + 1);
+                  }}
+                />
+              </>
+            )}
+          </label>
+        );
+      })}
+      <div className="config-controls__footer">
+        <span>{query || 'Using defaults'}</span>
+        {query && (
+          <div>
+          <button onClick={() => void navigator.clipboard.writeText(`${location.origin}${location.pathname}${query}`)}>
+            Copy URL
+          </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   session: Session;
   config: Config;
@@ -115,8 +174,6 @@ export function DebugPanel({ session, config, onClose }: Props) {
   };
 
   const { stats } = session;
-  const query = overridesQuery(config);
-
   return (
     <aside className="debug">
       <header className="debug__head">
@@ -186,47 +243,7 @@ export function DebugPanel({ session, config, onClose }: Props) {
 
       <section>
         <h4>Config</h4>
-        {CONTROLS.map((c) => {
-          const value = getLeaf(config, c.path);
-          return (
-            <label key={c.path} className="debug__control">
-              <span>{c.path}</span>
-              {typeof value === 'boolean' ? (
-                <input
-                  type="checkbox"
-                  checked={value}
-                  onChange={(e) => {
-                    setLeaf(config, c.path, e.target.checked);
-                    rerender();
-                  }}
-                />
-              ) : (
-                <>
-                  <input
-                    type="range"
-                    min={c.min}
-                    max={c.max}
-                    step={c.step}
-                    value={value as number}
-                    onChange={(e) => {
-                      setLeaf(config, c.path, Number(e.target.value));
-                      rerender();
-                    }}
-                  />
-                  <code>{String(value)}</code>
-                </>
-              )}
-            </label>
-          );
-        })}
-        <p className="debug__muted">
-          Overrides: <code>{query || '(defaults)'}</code>{' '}
-          {query && (
-            <button onClick={() => void navigator.clipboard.writeText(`${location.origin}${location.pathname}${query}`)}>
-              copy URL
-            </button>
-          )}
-        </p>
+        <ConfigControls config={config} />
       </section>
     </aside>
   );

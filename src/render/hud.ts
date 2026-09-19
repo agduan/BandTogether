@@ -11,9 +11,9 @@ export interface HudInfo {
 const PULSE_MS = 220;
 
 /**
- * Heads-up display drawn on the overlay canvas: mode badge, song title, a
- * beat pulse with one dot per beat of the bar, and the current chord. The
- * chart timeline, score and chord badge arrive in commits 12 and 19.
+ * Heads-up display drawn on the overlay canvas: song title, a beat pulse with
+ * one dot per beat of the bar, and the current chord. The chart timeline,
+ * score and chord badge arrive in commits 12 and 19.
  */
 export class Hud implements OverlayLayer {
   private lastBeat: BeatEvent | null = null;
@@ -37,28 +37,18 @@ export class Hud implements OverlayLayer {
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
 
-    // Mode badge, top-left.
-    const badge = info.mode === 'easy' ? 'EASY' : 'HARD';
-    ctx.font = `700 ${Math.round(13 * s)}px system-ui, sans-serif`;
-    const bw = ctx.measureText(badge).width + 14 * s;
-    ctx.fillStyle = info.mode === 'easy' ? 'rgba(227,243,236,0.92)' : 'rgba(251,230,227,0.92)';
-    roundRect(ctx, margin, margin, bw, 20 * s, 6 * s);
-    ctx.fill();
-    ctx.fillStyle = info.mode === 'easy' ? '#0f6b4c' : '#a8321f';
-    ctx.fillText(badge, margin + 7 * s, margin + 4 * s);
-
     if (!info.songTitle) {
       ctx.restore();
       return;
     }
 
-    // Song line under the badge.
+    // Song line.
     ctx.fillStyle = 'rgba(255,255,255,0.9)';
     ctx.font = `600 ${Math.round(13 * s)}px system-ui, sans-serif`;
     ctx.shadowColor = 'rgba(0,0,0,0.8)';
     ctx.shadowBlur = 4 * s;
     const status = info.songRunning ? '' : ' · paused (press ▶)';
-    ctx.fillText(`${info.songTitle}${status}`, margin, margin + 26 * s);
+    ctx.fillText(`${info.songTitle}${status}`, margin, margin);
 
     if (!info.songRunning) {
       ctx.restore();
@@ -71,7 +61,7 @@ export class Hud implements OverlayLayer {
     const pulse = Math.max(0, 1 - age / PULSE_MS);
     const dotR = 5 * s;
     const gap = 16 * s;
-    const y0 = margin + 52 * s;
+    const y0 = margin + 30 * s;
     for (let i = 0; i < info.beatsPerBar; i++) {
       const x = margin + dotR + i * gap;
       const active = i === beat;
@@ -99,18 +89,4 @@ export class Hud implements OverlayLayer {
     }
     ctx.restore();
   }
-}
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
 }
