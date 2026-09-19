@@ -9,15 +9,16 @@ import { Overlay } from '@/render/overlay';
 import { Recorder, Replayer, type Recording, type ReplayerOptions } from '@/vision/recorder';
 import { AudioEngine } from '@/audio/engine';
 import { createResolver, FREEPLAY_CONTEXT } from '@/audio/modes';
+import { BandScore, isScoredEvent } from '@/audio/score';
 import { SingerChannel } from '@/audio/singer';
 import { SongClock } from '@/audio/songClock';
-import type { InstrumentId, PlayerId, PlayMode, SongContext } from '@/core/types';
+import type { InstrumentEvent, InstrumentId, PlayerId, PlayMode, SongContext } from '@/core/types';
 import { Hud } from '@/render/hud';
 import { getSong } from '@/song/songs';
 import { barAt, barCount } from '@/song/types';
 import { InstrumentController } from './controller';
 import { createInstrument } from './instruments';
-import { EMPTY_SCORE, type PlayerInfo, type SessionInfo, type SongInfo } from './sessionInfo';
+import type { PlayerInfo, SessionInfo, SongInfo } from './sessionInfo';
 
 export interface SessionStats {
   fps: number;
@@ -48,6 +49,8 @@ export class Session {
   /** One per player, index = player id. */
   private readonly players: InstrumentController[] = [];
   private songClock: SongClock | null = null;
+  private readonly score: BandScore;
+  private readonly unsubscribeScore: () => void;
   readonly stats: SessionStats = {
     fps: 0,
     inferenceMs: 0,
@@ -80,6 +83,10 @@ export class Session {
     this.audio = new AudioEngine(config.audio);
     this.singer = new SingerChannel(config.singer, () => this.audio.output);
     this.players.push(this.createController('drums', 0));
+    this.score = new BandScore(config.score, () => this.songContext());
+    this.unsubscribeScore = bus.onAny((e) => {
+      if ('playerId' in e) this.judge(e);
+    });
     this.hud = new Hud(() => this.info());
   }
 
@@ -154,6 +161,18 @@ export class Session {
     bus.emit({ type: 'drum.hit', t: performance.now(), playerId: drummer.playerId, pad: 'kick', velocity });
   }
 
+  /** Score a sounding event against the song clock. Free play and a paused band are not judged. */
+  private judge(e: InstrumentEvent): void {
+    if (this.isPaused) return;
+    const instrument = this.players[e.playerId]?.instrument.id;
+    if (instrument && isScoredEvent(e, instrument)) this.score.hit(e.playerId);
+  }
+
+  /** Zero every player's score and the tightness meter. `startSong` does this too. */
+  resetScore(): void {
+    this.score.reset();
+  }
+
   private drumsVoice() {
     return this.players.find((c) => c.instrument.id === 'drums')?.instrument.voice ?? null;
   }
@@ -168,7 +187,7 @@ export class Session {
         instrument: c.instrument.id,
         hands: hands.filter((h) => h.playerId === c.playerId).length,
         calibration: view?.instrument === 'drums' ? view.calibration : 'none',
-        score: { ...EMPTY_SCORE }, // K7
+        score: this.score.info(c.playerId),
       };
     });
     return {
@@ -182,7 +201,7 @@ export class Session {
       backing: { enabled: this.config.backing.enabled },
       singer: this.singer.info(),
       players,
-      band: { tightness: 0 }, // K7
+      band: { tightness: this.score.tightness },
     };
   }
 
@@ -231,6 +250,7 @@ export class Session {
   startSong(songId = this.config.play.song): void {
     if (this.audio.state !== 'running') return;
     this.stopSong();
+    this.score.reset();
     this.config.play.song = songId;
     const { play } = this.config;
     this.songClock = new SongClock(getSong(songId), {
@@ -415,6 +435,7 @@ export class Session {
     this.disposed = true;
     this.teardown();
     for (const c of this.players) c.dispose();
+    this.unsubscribeScore();
     this.singer.dispose();
     this.hud.dispose();
     this.onPhase('idle');

@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '@/app/config';
 import { Session } from '@/app/session';
 import { bus } from '@/core/bus';
-import type { AppEvent } from '@/core/types';
+import { FREEPLAY_CONTEXT } from '@/audio/modes';
+import type { AppEvent, SongContext } from '@/core/types';
 import { DebugOverlay } from '@/detectors/debugOverlay';
 
 /** A Session never touches the camera, model or audio context until `start()`, so fakes are enough. */
@@ -95,6 +96,61 @@ describe('Session seams', () => {
     expect(s.info().backing.enabled).toBe(false);
     s.setNumPlayers(5);
     expect(s.config.players.count).toBe(2);
+    s.stop();
+  });
+
+  it('scores sounding events against the song clock and reports them through info()', () => {
+    const s = makeSession();
+    const hit = () => bus.emit({ type: 'drum.hit', t: 1, playerId: 0, pad: 'snare', velocity: 0.8 });
+    hit(); // free play: not judged
+    expect(s.info().players[0].score).toMatchObject({ points: 0, miss: 0, last: null });
+
+    // Stand in for a running song clock (the real one needs an audio context).
+    let song: SongContext = { ...FREEPLAY_CONTEXT, bpm: 80, beatPhase: 0.02 };
+    (s as unknown as { songContext: () => SongContext }).songContext = () => song;
+    hit();
+    s.kick();
+    expect(s.info().players[0].score).toMatchObject({ perfect: 2, combo: 2, last: 'perfect' });
+    expect(s.info().band.tightness).toBe(1);
+
+    song = { ...song, beatPhase: 0.25 };
+    hit();
+    expect(s.info().players[0].score).toMatchObject({ perfect: 2, miss: 1, combo: 0, bestCombo: 2 });
+    expect(s.info().band.tightness).toBeCloseTo(2 / 3);
+
+    // Events for an instrument the player is not on make no sound and no score.
+    bus.emit({ type: 'guitar.strum', t: 1, playerId: 0, direction: 'down', velocity: 0.8, chord: null, chordConfidence: 0 });
+    expect(s.info().players[0].score.miss).toBe(1);
+
+    s.resetScore();
+    expect(s.info().players[0].score.points).toBe(0);
+    expect(s.info().band.tightness).toBe(0);
+    s.stop();
+    hit(); // a stopped session no longer listens
+    expect(s.info().players[0].score.miss).toBe(0);
+  });
+
+  it('pause freezes the score and resume keeps it', () => {
+    const video = { pause() {}, play: async () => {} } as unknown as HTMLVideoElement;
+    const canvas = { getContext: () => ({}) } as unknown as HTMLCanvasElement;
+    const s = new Session(video, canvas, structuredClone(DEFAULT_CONFIG));
+    s.overlay.drawLabel = () => {};
+    // Stand in for a started session: pause() is a no-op without a frame loop.
+    (s as unknown as { loop: { start(): void; stop(): void } }).loop = { start() {}, stop() {} };
+    const song: SongContext = { ...FREEPLAY_CONTEXT, bpm: 80, beatPhase: 0.02 };
+    (s as unknown as { songContext: () => SongContext }).songContext = () => song;
+    const hit = () => bus.emit({ type: 'drum.hit', t: 1, playerId: 0, pad: 'snare', velocity: 0.8 });
+
+    hit();
+    hit();
+    s.pause();
+    expect(s.paused).toBe(true);
+    hit(); // keyboard hits still travel the bus while paused, but are not judged
+    expect(s.info().players[0].score).toMatchObject({ perfect: 2, combo: 2, points: 200 });
+    s.resume();
+    expect(s.info().players[0].score).toMatchObject({ perfect: 2, combo: 2, points: 200 });
+    hit();
+    expect(s.info().players[0].score.perfect).toBe(3);
     s.stop();
   });
 
