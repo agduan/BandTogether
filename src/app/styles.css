@@ -133,3 +133,92 @@ body {
   padding: 4px 8px;
   max-width: 50%;
 }
+
+.stage__debug-toggle {
+  background: transparent;
+  color: #9aa4b2;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+/* Debug panel */
+.debug {
+  text-align: left;
+  font-size: 0.8rem;
+  background: #12151c;
+  border: 1px solid #2a2f3a;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.debug__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.debug__head button {
+  background: transparent;
+  color: #9aa4b2;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.debug h4 {
+  margin: 0 0 4px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #9aa4b2;
+}
+
+.debug__muted {
+  color: #6c7686;
+  margin: 4px 0;
+}
+
+.debug__row,
+.debug__event {
+  margin: 2px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  word-break: break-all;
+}
+
+.debug__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.debug__controls button,
+.debug__muted button {
+  background: #1b2029;
+  color: #e8ecf1;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.debug__control {
+  display: grid;
+  grid-template-columns: 11rem 1fr 4rem;
+  gap: 8px;
+  align-items: center;
+  margin: 2px 0;
+}
+
+.debug__control input[type='range'] {
+  width: 100%;
+}

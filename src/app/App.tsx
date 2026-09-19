@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadConfig } from './config';
 import { Session, type SessionPhase, type SessionStats } from './session';
 import type { CameraInfo } from '@/vision/camera';
+import { DebugPanel } from '@/render/DebugPanel';
 
 const PHASE_TEXT: Record<SessionPhase, string> = {
   idle: '',
@@ -52,6 +53,16 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
   const [stats, setStats] = useState<SessionStats | null>(null);
   const [cameras, setCameras] = useState<CameraInfo[]>([]);
   const [deviceId, setDeviceId] = useState('');
+  const [session, setSession] = useState<Session | null>(null);
+  const [showDebug, setShowDebug] = useState(config.debug.panel);
+
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === '`' && !(ev.target instanceof HTMLInputElement)) setShowDebug((v) => !v);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -60,6 +71,9 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
 
     const session = new Session(video, canvas, config);
     sessionRef.current = session;
+    setSession(session);
+    // Dev hook for console poking and headless checks: window.__airband.session
+    if (import.meta.env.DEV) (window as unknown as { __airband?: unknown }).__airband = { session, config };
     session
       .start((p, d) => {
         setPhase(p);
@@ -77,6 +91,7 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
       window.clearInterval(statsTimer);
       session.stop();
       sessionRef.current = null;
+      setSession(null);
     };
   }, [config]);
 
@@ -108,6 +123,9 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
               `${stats.width}×${stats.height} · ${stats.usingVideoFrameCallback ? 'rVFC' : 'rAF'}`
             : detail}
         </span>
+        <button className="stage__debug-toggle" onClick={() => setShowDebug((v) => !v)} title="Toggle debug panel (`)">
+          debug
+        </button>
         {cameras.length > 1 && (
           <select
             className="stage__camera"
@@ -123,6 +141,8 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
           </select>
         )}
       </div>
+
+      {showDebug && session && <DebugPanel session={session} config={config} onClose={() => setShowDebug(false)} />}
     </section>
   );
 }

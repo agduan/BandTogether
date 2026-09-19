@@ -6,6 +6,7 @@ import { FrameAdapter } from '@/vision/frameAdapter';
 import { LM, type VisionFrame } from '@/core/types';
 import { bus } from '@/core/bus';
 import { Overlay } from '@/render/overlay';
+import { Recorder, Replayer, type Recording, type ReplayerOptions } from '@/vision/recorder';
 
 export interface SessionStats {
   fps: number;
@@ -39,10 +40,13 @@ export class Session {
     usingVideoFrameCallback: false,
   };
 
-  private config: Config;
+  /** Shared, mutable at runtime by the debug panel. */
+  readonly config: Config;
   private tracker: HandTracker | null = null;
   private adapter: FrameAdapter;
   private loop: FrameLoop | null = null;
+  private readonly recorder = new Recorder();
+  private replayer: Replayer | null = null;
   /** Most recent adapted frame, for consumers that poll instead of subscribing. */
   lastFrame: VisionFrame | null = null;
   private readonly fpsMeter = new FpsMeter();
@@ -93,10 +97,50 @@ export class Session {
     }
   }
 
+  /** 'camera' while the live loop feeds frames, 'replay' while a recording does. */
+  get source(): 'camera' | 'replay' {
+    return this.replayer ? 'replay' : 'camera';
+  }
+
+  get isRecording(): boolean {
+    return this.recorder.isRecording;
+  }
+
+  get recordedFrames(): number {
+    return this.recorder.frameCount;
+  }
+
+  startRecording(): void {
+    this.recorder.start();
+  }
+
+  stopRecording(note?: string): Recording {
+    return this.recorder.stop(note);
+  }
+
+  /** Pause the camera loop and drive the pipeline from a recording instead. */
+  replay(rec: Recording, opts: ReplayerOptions = {}): void {
+    this.stopReplay();
+    this.loop?.stop();
+    this.replayer = new Replayer(rec, (frame) => this.consume(frame), opts);
+    this.overlay.aspect = rec.aspect;
+    this.replayer.start();
+  }
+
+  stopReplay(): void {
+    if (!this.replayer) return;
+    this.replayer.stop();
+    this.replayer = null;
+    this.adapter.reset();
+    this.fpsMeter.reset();
+    if (this.loop && !this.disposed) this.loop.start();
+  }
+
   /** Restart the camera on another device; the model stays loaded. */
   async switchCamera(deviceId: string): Promise<void> {
-    this.config = { ...this.config, camera: { ...this.config.camera, deviceId } };
+    this.config.camera.deviceId = deviceId;
     if (!this.loop) return;
+    this.stopReplay();
     this.loop.stop();
     await this.camera.start(this.config.camera);
     this.overlay.aspect = this.camera.aspect;
@@ -122,6 +166,8 @@ export class Session {
   }
 
   private teardown(): void {
+    this.replayer?.stop();
+    this.replayer = null;
     this.loop?.stop();
     this.loop = null;
     this.tracker?.close();
@@ -132,29 +178,37 @@ export class Session {
   private onFrame(video: HTMLVideoElement, t: number): void {
     if (!this.tracker) return;
     const { result, inferenceMs } = this.tracker.detect(video, t);
-    const aspect = this.camera.aspect;
-    const frame = this.adapter.adapt(result, t, aspect, inferenceMs);
+    const frame = this.adapter.adapt(result, t, this.camera.aspect, inferenceMs);
+    this.consume(frame);
+  }
+
+  /** Everything downstream of the frame adapter; fed by the camera loop or a replay. */
+  private consume(frame: VisionFrame): void {
     this.lastFrame = frame;
+    this.recorder.push(frame);
     bus.emit({ type: 'vision.frame', frame });
 
     this.overlay.syncSize();
-    this.overlay.aspect = aspect;
+    this.overlay.aspect = frame.aspect;
     this.overlay.clear();
 
-    for (const hand of frame.hands) {
-      // Colour by track id so a stable identity is visible at a glance.
-      const color = HAND_COLORS[(hand.trackId - 1) % HAND_COLORS.length];
-      this.overlay.drawHand(hand.smooth, { color });
-      // Corrected + voted label. Raise only your right hand: it must read "R".
-      // If it reads "L", set vision.swapHandedness=true (URL: ?vision.swapHandedness=true).
-      const label = `#${hand.trackId} ${hand.handedness === 'Left' ? 'L' : 'R'} ${hand.handednessScore.toFixed(2)}`;
-      this.overlay.drawLabel(label, hand.smooth[LM.WRIST], color);
+    if (this.config.debug.skeleton) {
+      for (const hand of frame.hands) {
+        // Colour by track id so a stable identity is visible at a glance.
+        const color = HAND_COLORS[(hand.trackId - 1) % HAND_COLORS.length];
+        this.overlay.drawHand(hand.smooth, { color });
+        // Corrected + voted label. Raise only your right hand: it must read "R".
+        // If it reads "L", set vision.swapHandedness=true (URL: ?vision.swapHandedness=true).
+        const label = `#${hand.trackId} ${hand.handedness === 'Left' ? 'L' : 'R'} ${hand.handednessScore.toFixed(2)}`;
+        this.overlay.drawLabel(label, hand.smooth[LM.WRIST], color);
+      }
     }
+    if (this.replayer) this.overlay.drawLabel('REPLAY', { x: frame.aspect / 2, y: 0.08 }, '#ffd75c');
 
-    this.stats.fps = this.fpsMeter.tick(t);
+    this.stats.fps = this.fpsMeter.tick(frame.t);
     this.stats.inferenceMs = this.stats.inferenceMs
-      ? this.stats.inferenceMs + 0.1 * (inferenceMs - this.stats.inferenceMs)
-      : inferenceMs;
+      ? this.stats.inferenceMs + 0.1 * (frame.inferenceMs - this.stats.inferenceMs)
+      : frame.inferenceMs;
     this.stats.hands = frame.hands.length;
   }
 }
