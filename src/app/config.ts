@@ -92,6 +92,8 @@ export interface Config {
     panel: boolean;
     skeleton: boolean;
     latencyMeter: boolean;
+    /** Skip the Start button and open the camera on load (kiosk/demo and headless checks). */
+    autostart: boolean;
   };
 }
 
@@ -147,7 +149,7 @@ export const DEFAULT_CONFIG: Config = {
     latchMs: 50,
   },
   audio: { lookAhead: 0.01, latencyHint: 'interactive' },
-  debug: { panel: false, skeleton: true, latencyMeter: false },
+  debug: { panel: false, skeleton: true, latencyMeter: false, autostart: false },
 };
 
 /** Parse `?a.b=1&c=true` into a flat map of dotted paths to raw strings. */
