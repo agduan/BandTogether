@@ -145,6 +145,8 @@ export interface Config {
     goodMs: number;
     /** Events in the tightness window. */
     window: number;
+    /** Subtracted from every event's time before judging; raise it if honest playing reads late. */
+    latencyMs: number;
   };
   players: {
     count: number;
@@ -223,7 +225,7 @@ export const DEFAULT_CONFIG: Config = {
   },
   singer: { enabled: false, gain: 1, echo: 0.25, reverb: 0.3 },
   backing: { enabled: true, volume: -10 },
-  score: { subdivision: 2, perfectMs: 60, goodMs: 130, window: 16 },
+  score: { subdivision: 2, perfectMs: 60, goodMs: 130, window: 16, latencyMs: 0 },
   players: { count: 1, deadZone: 0.05 },
 };
 
