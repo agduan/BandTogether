@@ -85,19 +85,6 @@ export interface Config {
     bandXMax: number;
     useVelocityOnset: boolean;
   };
-  chord: {
-    k: number;
-    minP: number;
-    unknownDistFactor: number;
-    emaTauMs: number;
-    switchP: number;
-    switchMargin: number;
-    switchFrames: number;
-    unknownP: number;
-    unknownMs: number;
-    stickyMs: number;
-    latchMs: number;
-  };
   audio: {
     lookAhead: number;
     latencyHint: 'interactive' | 'balanced' | 'playback';
@@ -172,19 +159,6 @@ export const DEFAULT_CONFIG: Config = {
     bandXMin: 0.53,
     bandXMax: 0.81,
     useVelocityOnset: false,
-  },
-  chord: {
-    k: 7,
-    minP: 0.5,
-    unknownDistFactor: 2.0,
-    emaTauMs: 150,
-    switchP: 0.6,
-    switchMargin: 0.2,
-    switchFrames: 3,
-    unknownP: 0.45,
-    unknownMs: 300,
-    stickyMs: 1500,
-    latchMs: 50,
   },
   audio: { lookAhead: 0.01, latencyHint: 'interactive' },
   play: { mode: 'easy', song: 'saints', click: true, autoKick: true, autostartSong: false },
