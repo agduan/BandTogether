@@ -156,6 +156,107 @@ summary:focus-visible {
   flex-wrap: wrap;
 }
 
+.control-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.control-section + .control-section {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.control-label {
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.control-note {
+  color: var(--text-faint);
+  font-size: 0.69rem;
+  line-height: 1.35;
+}
+
+.control-note kbd {
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-bottom-color: var(--border-strong);
+  border-radius: 2px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.64rem;
+}
+
+.control-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 7px;
+}
+
+.control-actions .btn {
+  justify-content: center;
+  min-width: 0;
+  padding-inline: 8px;
+}
+
+.instrument-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.instrument-option {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 0.67rem;
+  font-weight: 650;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.instrument-option:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--sunken);
+  color: var(--text);
+}
+
+.instrument-option:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.instrument-option[aria-checked='true'] {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--surface);
+}
+
+.instrument-option__mark {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-family: var(--mono);
+  font-size: 0.69rem;
+  font-weight: 800;
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;
@@ -325,6 +426,18 @@ summary:focus-visible {
 
 .status[data-tone='paused'] i {
   background: var(--paused-fg);
+}
+
+.instrument-chip {
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.64rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 @keyframes pulse {
@@ -757,16 +870,16 @@ summary:focus-visible {
   .console__bar {
     grid-row: 1;
     align-items: stretch;
+    align-content: flex-start;
+    flex-direction: column;
+    flex-wrap: nowrap;
   }
 
-  .console__bar .console__group {
+  .console__bar .control-section {
     width: 100%;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
   }
 
-  .console__bar .console__group .select {
-    grid-column: 1 / -1;
+  .console__bar .select {
     width: 100%;
     max-width: none;
   }
@@ -850,7 +963,7 @@ summary:focus-visible {
     justify-content: flex-start;
   }
 
-  .console__bar > .console__group:first-child {
+  .console__bar .control-section {
     width: 100%;
   }
 

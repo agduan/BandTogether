@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadConfig } from './config';
 import { Session, type SessionPhase, type SessionStats } from './session';
+import { INSTRUMENT_IDS, INSTRUMENT_MODES, type PlayableInstrumentId } from './instruments';
 import type { CameraInfo } from '@/vision/camera';
-import { bus } from '@/core/bus';
 import type { PlayMode } from '@/core/types';
 import { ConfigControls, DebugPanel, resetConfigControls } from '@/render/DebugPanel';
 import { SONGS } from '@/song/songs';
@@ -14,6 +14,12 @@ const PHASE_TEXT: Record<SessionPhase, string> = {
   audio: 'Loading sounds…',
   running: '',
   error: 'Something went wrong',
+};
+
+const INSTRUMENT_LABELS: Record<PlayableInstrumentId, { label: string; mark: string; hint: string }> = {
+  drums: { label: 'Drums', mark: 'D', hint: 'Strike the pads' },
+  guitar: { label: 'Guitar', mark: 'G', hint: 'Strum the song' },
+  bass: { label: 'Bass', mark: 'B', hint: 'Pluck the groove' },
 };
 
 export function App() {
@@ -56,6 +62,7 @@ function Stage({
   const [deviceId, setDeviceId] = useState('');
   const [session, setSession] = useState<Session | null>(null);
   const [showDebug, setShowDebug] = useState(config.debug.panel);
+  const [instrument, setInstrument] = useState<PlayableInstrumentId>('drums');
   const [mode, setMode] = useState<PlayMode>(config.play.mode);
   const [songId, setSongId] = useState(config.play.song);
   const [songRunning, setSongRunning] = useState(false);
@@ -68,11 +75,13 @@ function Stage({
         ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement || ev.target instanceof HTMLTextAreaElement;
       if (typing) return;
       if (ev.key === '`') setShowDebug((v) => !v);
-      // Spacebar = kick pedal (any USB keyboard on the floor works). Always a kick, in both modes.
+      if (ev.key.toLowerCase() === 'c' && !ev.repeat) {
+        sessionRef.current?.calibrate();
+      }
+      // Spacebar = kick pedal (any USB keyboard on the floor works).
       if (ev.code === 'Space') {
         ev.preventDefault();
-        if (sessionRef.current?.paused) return;
-        if (!ev.repeat) bus.emit({ type: 'drum.hit', t: performance.now(), playerId: 0, pad: 'kick', velocity: 0.9 });
+        if (!ev.repeat && !sessionRef.current?.paused) sessionRef.current?.kick();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -121,8 +130,21 @@ function Stage({
     await sessionRef.current?.switchCamera(id);
   };
 
+  const applyInstrument = (next: PlayableInstrumentId) => {
+    if (next === instrument) return;
+    const supportedModes = INSTRUMENT_MODES[next];
+    const nextMode = supportedModes.includes(mode) ? mode : supportedModes[0];
+    setInstrument(next);
+    sessionRef.current?.setInstrument(next);
+    if (nextMode !== mode) {
+      setMode(nextMode);
+      sessionRef.current?.setMode(nextMode);
+      if (sessionRef.current?.songRunning) sessionRef.current.startSong();
+    }
+  };
+
   const applyMode = (next: PlayMode) => {
-    if (next === mode) return;
+    if (next === mode || !INSTRUMENT_MODES[instrument].includes(next)) return;
     setMode(next);
     sessionRef.current?.setMode(next);
     // The auto kick belongs to easy mode: restart the clock so the option takes effect.
@@ -152,7 +174,12 @@ function Stage({
     else if (s) s.config.play.song = id;
   };
 
+  const resetPlacement = () => {
+    sessionRef.current?.resetCalibration();
+  };
+
   const aspect = stats && stats.width > 0 ? `${stats.width} / ${stats.height}` : '4 / 3';
+  const hardModeAvailable = INSTRUMENT_MODES[instrument].includes('hard');
 
   const live = active && phase === 'running';
   const status = !live
@@ -167,23 +194,84 @@ function Stage({
     <section className="stage-wrap">
       <div className="console">
         <div className="console__bar">
-          <div className="console__group">
-            <button
-              className={`btn ${songRunning ? '' : 'btn--primary'}`}
-              onClick={toggleSong}
-              disabled={!live}
-              title="Start or stop the song clock"
-            >
-              {songRunning ? '■ Stop' : '▶ Play'}
-            </button>
-            <button
-              className={`btn ${paused ? 'btn--paused' : ''}`}
-              onClick={togglePause}
-              disabled={!live}
-              title="Freeze the picture and stop tracking, sound and the song. Click again to carry on."
-            >
-              {paused ? '▶ Resume' : '⏸ Pause'}
-            </button>
+          <div className="control-section">
+            <span className="control-label">Instrument</span>
+            <div className="instrument-picker" role="radiogroup" aria-label="Instrument">
+              {INSTRUMENT_IDS.map((id) => {
+                const item = INSTRUMENT_LABELS[id];
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className="instrument-option"
+                    data-instrument={id}
+                    aria-checked={instrument === id}
+                    role="radio"
+                    disabled={!live}
+                    onClick={() => applyInstrument(id)}
+                    title={item.hint}
+                  >
+                    <span className="instrument-option__mark" aria-hidden="true">
+                      {item.mark}
+                    </span>
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="control-section">
+            <span className="control-label">Play style</span>
+            <div className="segmented" data-mode={mode} role="group" aria-label="Difficulty">
+              <button
+                type="button"
+                onClick={() => applyMode('easy')}
+                disabled={!live}
+                aria-pressed={mode === 'easy'}
+                title="Easy: the song chooses what you play."
+              >
+                Easy
+              </button>
+              <button
+                type="button"
+                onClick={() => applyMode('hard')}
+                disabled={!live || !hardModeAvailable}
+                aria-pressed={mode === 'hard'}
+                title={hardModeAvailable ? 'Hard: your gesture chooses what you play.' : 'Guitar is easy mode only.'}
+              >
+                Hard
+              </button>
+            </div>
+            <span className="control-note">
+              {instrument === 'guitar'
+                ? 'The song chooses the chord. You bring the rhythm.'
+                : mode === 'easy'
+                  ? 'The song keeps every move musical.'
+                  : 'Your position chooses the sound.'}
+            </span>
+          </div>
+
+          <div className="control-section">
+            <span className="control-label">Session</span>
+            <div className="control-actions">
+              <button
+                className={`btn ${songRunning ? '' : 'btn--primary'}`}
+                onClick={toggleSong}
+                disabled={!live}
+                title="Start or stop the song clock"
+              >
+                {songRunning ? '■ Stop' : '▶ Play'}
+              </button>
+              <button
+                className={`btn ${paused ? 'btn--paused' : ''}`}
+                onClick={togglePause}
+                disabled={!live}
+                title="Freeze the camera, tracking, sound and song."
+              >
+                {paused ? '▶ Resume' : '⏸ Pause'}
+              </button>
+            </div>
             <select
               className="select"
               value={songId}
@@ -199,25 +287,19 @@ function Stage({
             </select>
           </div>
 
-          <div className="segmented" data-mode={mode} role="group" aria-label="Difficulty">
-            <button
-              type="button"
-              onClick={() => applyMode('easy')}
-              disabled={!live}
-              aria-pressed={mode === 'easy'}
-              title="Easy: the song picks the drum for you."
-            >
-              Easy
-            </button>
-            <button
-              type="button"
-              onClick={() => applyMode('hard')}
-              disabled={!live}
-              aria-pressed={mode === 'hard'}
-              title="Hard: you play the pad you actually hit."
-            >
-              Hard
-            </button>
+          <div className="control-section">
+            <span className="control-label">Placement</span>
+            <div className="control-actions">
+              <button className="btn" type="button" onClick={() => sessionRef.current?.calibrate()} disabled={!live}>
+                ◎ Calibrate
+              </button>
+              <button className="btn btn--quiet" type="button" onClick={resetPlacement} disabled={!live}>
+                Reset
+              </button>
+            </div>
+            <span className="control-note">
+              Press <kbd>C</kbd> with your hands in playing position.
+            </span>
           </div>
         </div>
 
@@ -246,8 +328,11 @@ function Stage({
               <i />
               {status.label}
             </span>
+            <span className="instrument-chip" data-instrument={instrument}>
+              {INSTRUMENT_LABELS[instrument].label} · {mode}
+            </span>
             <span className="hint">
-              <kbd>space</kbd> kick · <kbd>`</kbd> debug
+              <kbd>C</kbd> calibrate · <kbd>space</kbd> kick
             </span>
           </div>
           <div className="console__group">
