@@ -4,8 +4,10 @@
 //
 //   drums_5hits.json      right hand (#1) plunges through the snare line five times
 //   drums_upstrokes.json  right hand (#1) whips UP five times and drifts back down slowly
+//   strum_alternating.json right hand (#1) strums down/up across the guitar band: 8 full
+//                          stroke pairs, then 5 small sloppy ones; left hand (#2) frets up the neck
 //
-// Both have a resting left hand (#2) over the hi-hat. Hands are drawn in a
+// The drum fixtures have a resting left hand (#2) over the hi-hat. Hands are drawn in a
 // drumming pose: knuckles forward, fingers pointing down, so the virtual stick
 // tip (palm + wrist→middle-MCP · 1.5 · palmSize) is BELOW the wrist.
 // Real recordings from the camera supersede these.
@@ -51,30 +53,89 @@ function strokeY(t, { from, to, fast, slow }) {
   return from;
 }
 
+// Strum fixture: the PALM (wrist + 0.76 · PALM_SIZE below the wrist) swings around the
+// band centreline (config strum.bandY = 0.62) as y = 0.62 − A·cos(2π(t − t0)/T), starting
+// and ending at the top of the swing. Annotations mark the centreline crossings.
+const STRUM_LINE_Y = 0.62;
+const PALM_DY = 0.76 * PALM_SIZE;
+const STRUM_SEGMENTS = [
+  { t0: 1000, amp: 0.12, period: 500, cycles: 8 }, // full strokes, peak ≈ 1.5 h/s
+  { t0: 6000, amp: 0.05, period: 400, cycles: 5 }, // wobbling ±0.05 h around the strings, peak ≈ 0.8 h/s
+];
+const STRUM_DURATION_MS = 8500;
+
+// Deterministic tracker jitter, ±0.003 h.
+function jitter(i, salt) {
+  const x = Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453;
+  return (x - Math.floor(x) - 0.5) * 0.006;
+}
+
+function strumPalmY(t) {
+  for (const s of STRUM_SEGMENTS) {
+    const d = t - s.t0;
+    if (d >= 0 && d <= s.period * s.cycles) return STRUM_LINE_Y - s.amp * Math.cos((2 * Math.PI * d) / s.period);
+  }
+  const [big, small] = STRUM_SEGMENTS;
+  const top = STRUM_LINE_Y - big.amp;
+  // Between the segments: hold, then drift slowly (0.14 h/s) to the top of the small swing.
+  const driftStart = small.t0 - 500;
+  if (t > big.t0 && t < small.t0 && t >= driftStart) return top + ((big.amp - small.amp) * (t - driftStart)) / 500;
+  if (t > small.t0) return STRUM_LINE_Y - small.amp;
+  return top;
+}
+
+function strumHands(t, i) {
+  const y = strumPalmY(t) + jitter(i, 1);
+  // The strumming hand swings on an arc: a little x travel with the stroke.
+  const x = 0.67 * ASPECT + 0.15 * (y - STRUM_LINE_Y) + jitter(i, 2);
+  return [
+    { trackId: 1, handedness: 'Right', wrist: { x, y: y - PALM_DY }, mirror: 1 },
+    { trackId: 2, handedness: 'Left', wrist: { x: 0.3 * ASPECT + 0.01 * Math.sin(t / 700), y: 0.4 + jitter(i, 3) }, mirror: -1 },
+  ];
+}
+
+const STRUM_ANNOTATIONS = STRUM_SEGMENTS.flatMap((s) =>
+  Array.from({ length: s.cycles }, (_, k) => [
+    { t: s.t0 + (k + 0.25) * s.period, label: 'strum', detail: 'down' },
+    { t: s.t0 + (k + 0.75) * s.period, label: 'strum', detail: 'up' },
+  ]).flat(),
+);
+
+function drumHands(stroke) {
+  return (t) => [
+    { trackId: 1, handedness: 'Right', wrist: { x: 0.41 * ASPECT, y: strokeY(t, stroke) }, mirror: 1 },
+    { trackId: 2, handedness: 'Left', wrist: { x: 0.2 * ASPECT + 0.01 * Math.sin(t / 700), y: 0.35 }, mirror: -1 },
+  ];
+}
+
 const FIXTURES = {
   // 4-frame plunge ≈ 2.25 h/s (above vMin 1.0); 10-frame return.
   drums_5hits: {
     note: 'Synthetic: right hand (#1) plunges its stick tip through the snare line five times; left hand (#2) rests over the hi-hat.',
-    stroke: { from: 0.2, to: 0.5, fast: 4, slow: 10 },
+    hands: drumHands({ from: 0.2, to: 0.5, fast: 4, slow: 10 }),
     // The crossing is observed on the 4th plunge frame (tip 0.674 → 0.749 across 0.68).
     annotations: HIT_TIMES.map((t) => ({ t: t + 3 * DT, label: 'hit', detail: 'snare' })),
   },
   // 4-frame whip UP ≈ 2.25 h/s, then a 20-frame drift back down ≈ 0.45 h/s (below vMin).
   drums_upstrokes: {
     note: 'Synthetic: right hand (#1) starts below the snare line, whips up five times and drifts back slowly. Must produce zero hits.',
-    stroke: { from: 0.5, to: 0.2, fast: 4, slow: 20 },
+    hands: drumHands({ from: 0.5, to: 0.2, fast: 4, slow: 20 }),
     annotations: HIT_TIMES.map((t) => ({ t, label: 'upstroke', detail: 'no hit expected' })),
+  },
+  // Annotated at the centreline; the Schmitt trigger fires up to ~2 frames later (hysteresis + frame time).
+  strum_alternating: {
+    note: 'Synthetic: right hand (#1) strums down/up across the guitar band, 8 full stroke pairs then 5 small sloppy ones; left hand (#2) frets up the neck. 26 strums, alternating.',
+    hands: strumHands,
+    durationMs: STRUM_DURATION_MS,
+    annotations: STRUM_ANNOTATIONS,
   },
 };
 
 function build(spec) {
   const frames = [];
   const prevPalm = { 1: null, 2: null };
-  for (let i = 0, t = 0; t <= DURATION_MS; i++, t = i * DT) {
-    const specs = [
-      { trackId: 1, handedness: 'Right', wrist: { x: 0.41 * ASPECT, y: strokeY(t, spec.stroke) }, mirror: 1 },
-      { trackId: 2, handedness: 'Left', wrist: { x: 0.2 * ASPECT + 0.01 * Math.sin(t / 700), y: 0.35 }, mirror: -1 },
-    ];
+  for (let i = 0, t = 0; t <= (spec.durationMs ?? DURATION_MS); i++, t = i * DT) {
+    const specs = spec.hands(t, i);
     const hands = specs.map((s) => {
       const raw = handPoints(s.wrist, s.mirror);
       const palm = palmCenter(raw);

@@ -83,7 +83,14 @@ export interface Config {
     bandHalfHeight: number;
     bandXMin: number;
     bandXMax: number;
+    /** Fallback trigger for tiny motions: a speed onset inside the band instead of a centreline crossing. */
     useVelocityOnset: boolean;
+    /** Left-handed player: mirrors the band and the handedness prior. */
+    lefty: boolean;
+    /** Only the hand holding the strum role fires; false lets either hand strum. */
+    strummerOnly: boolean;
+    /** A hand must out-score the strummer this long before the roles swap (ms). */
+    roleSwapMs: number;
   };
   audio: {
     lookAhead: number;
@@ -204,6 +211,9 @@ export const DEFAULT_CONFIG: Config = {
     bandXMin: 0.53,
     bandXMax: 0.81,
     useVelocityOnset: false,
+    lefty: false,
+    strummerOnly: true,
+    roleSwapMs: 500,
   },
   audio: { lookAhead: 0.01, latencyHint: 'interactive' },
   play: { mode: 'easy', song: 'viva-la-vida', click: true, autoKick: true, autostartSong: false },

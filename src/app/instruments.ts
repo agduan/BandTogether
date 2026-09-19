@@ -76,7 +76,7 @@ export function createDrums(deps: InstrumentDeps): Instrument {
   };
 }
 
-/** Silent until rows 10 (strum detector) and 11 (guitar voice, chart voicings). */
+/** Strums are detected (row 10); silent until row 11 (guitar voice, chart voicings). */
 export function createGuitar(deps: InstrumentDeps): Instrument {
   const { config, playerId = 0, song } = deps;
   const detector = new GuitarStrumDetector(config, playerId);
@@ -84,8 +84,7 @@ export function createGuitar(deps: InstrumentDeps): Instrument {
     instrument: 'guitar',
     band: detector.band,
     chord: song?.().chord ?? null,
-    strumTrackId: null,
-    fretTrackId: null,
+    ...detector.roles,
   });
   const fx = overlayFor('guitar', deps, [detector], view);
   return {

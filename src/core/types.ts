@@ -123,6 +123,8 @@ export interface StrumEvent {
   /** Active chord at strum onset; null = unknown / none. */
   chord: ChordName | null;
   chordConfidence: number;
+  /** Where along the strings the hand crossed: 0 = neck end of the band, 1 = bridge end. Absent on injected strums. */
+  u?: number;
 }
 
 /** Emitted on label change only, for the HUD. */

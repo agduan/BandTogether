@@ -150,6 +150,15 @@ export class VelocityBuffer {
     return peak;
   }
 
+  /** Max upward (−y) speed over the last n samples, h/s. Strums and plucks fire both ways. */
+  peakUp(n = 3): number {
+    let peak = 0;
+    for (let i = Math.max(0, this.samples.length - n); i < this.samples.length; i++) {
+      peak = Math.max(peak, -this.samples[i].v.y);
+    }
+    return peak;
+  }
+
   reset(): void {
     this.samples.length = 0;
   }
