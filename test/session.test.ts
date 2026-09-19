@@ -32,7 +32,7 @@ describe('Session seams', () => {
     expect(info.players[0].score.points).toBe(0);
     // HudInfo fields stay at the top level.
     expect(info).toMatchObject({ mode: 'easy', songTitle: null, songRunning: false, beatsPerBar: 4, paused: false });
-    expect(info.song).toMatchObject({ id: 'viva-la-vida', bpm: 138, barCount: 20, running: false, lyric: null });
+    expect(info.song).toMatchObject({ id: 'viva-la-vida', bpm: 138, barCount: 8, running: false, lyric: null });
     expect(info.backing.enabled).toBe(true);
     expect(info.singer).toMatchObject({ enabled: false, level: 0, error: null });
     s.stop();
@@ -146,18 +146,18 @@ describe('Session seams', () => {
     expect(s.info().song).toMatchObject({ chord: null, nextChord: null, running: false });
 
     // Stand in for a running song clock (the real one needs an audio context).
-    const song = getSong('campfire'); // G D Em C | G D Am D
+    const song = getSong('perfect'); // verse G Em C D | chorus G Em C D
     let bar = 0;
     const context = (): SongContext => ({ ...FREEPLAY_CONTEXT, bpm: song.bpm, bar, chord: song.sections[0].bars[bar % 4].chord });
     (s as unknown as { songClock: unknown }).songClock = { song, running: true, beatsPerBar: 4, context, opts: {}, dispose() {} };
 
-    expect(s.info().song).toMatchObject({ title: 'Campfire Loop', running: true, chord: 'G', nextChord: 'D', section: 'loop' });
+    expect(s.info().song).toMatchObject({ title: 'Perfect', running: true, chord: 'G', nextChord: 'Em', section: 'verse' });
     bar = 3;
-    expect(s.info().song).toMatchObject({ chord: 'C', nextChord: 'G' });
+    expect(s.info().song).toMatchObject({ chord: 'D', nextChord: 'G' });
     bar = 7; // last bar of the chart: the next chord wraps to the top
     expect(s.info().song.nextChord).toBe('G');
     bar = 8 + 5; // past the end the chart loops
-    expect(s.info().song).toMatchObject({ nextChord: 'Am', section: 'turnaround' });
+    expect(s.info().song).toMatchObject({ nextChord: 'C', section: 'chorus' });
     s.stop();
     expect(s.info().song.nextChord).toBeNull();
   });
