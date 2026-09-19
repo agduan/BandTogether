@@ -23,12 +23,6 @@ const INSTRUMENT_LABELS: Record<PlayableInstrumentId, { label: string; mark: str
   bass: { label: 'Bass', mark: 'B', hint: 'Pluck the groove' },
 };
 
-const KARAOKE_CATALOG = [
-  { id: 'viva-la-vida', title: 'Viva la Vida', artist: 'Coldplay', feel: 'Anthem', chords: 'C · D · G · Em' },
-  { id: 'counting-stars', title: 'Counting Stars', artist: 'OneRepublic', feel: 'Driving', chords: 'Am · C · G · F' },
-  { id: 'perfect', title: 'Perfect', artist: 'Ed Sheeran', feel: 'Ballad', chords: 'G · Em · C · D' },
-] as const;
-
 type KaraokeSongInfo = SongInfo & {
   /** Keona's future song seam; the UI already has a place for it. */
   nextChord?: string | null;
@@ -84,6 +78,9 @@ function Stage({
   const [paused, setPaused] = useState(false);
   const [backingEnabled, setBackingEnabled] = useState(config.backing.enabled);
   const [sessionInfo, setSessionInfo] = useState<KaraokeSessionInfo | null>(null);
+  const [micPending, setMicPending] = useState(false);
+  const [echo, setEcho] = useState(config.singer.echo);
+  const [reverb, setReverb] = useState(config.singer.reverb);
   const [, refreshConfig] = useState(0);
 
   useEffect(() => {
@@ -135,6 +132,8 @@ function Stage({
       setSongRunning(info.songRunning);
       setPaused(info.paused);
       setBackingEnabled(info.backing.enabled);
+      setEcho(info.singer.echo);
+      setReverb(info.singer.reverb);
     }, 250);
 
     return () => {
@@ -205,9 +204,32 @@ function Stage({
     sessionRef.current?.setBacking(next);
   };
 
+  const toggleSinger = async () => {
+    const current = sessionRef.current;
+    if (!current || micPending) return;
+    setMicPending(true);
+    try {
+      await current.singer.setEnabled(!current.singer.enabled);
+      setSessionInfo(current.info() as KaraokeSessionInfo);
+    } finally {
+      setMicPending(false);
+    }
+  };
+
+  const changeEcho = (amount: number) => {
+    setEcho(amount);
+    sessionRef.current?.singer.setEcho(amount);
+  };
+
+  const changeReverb = (amount: number) => {
+    setReverb(amount);
+    sessionRef.current?.singer.setReverb(amount);
+  };
+
   const aspect = stats && stats.width > 0 ? `${stats.width} / ${stats.height}` : '4 / 3';
   const hardModeAvailable = INSTRUMENT_MODES[instrument].includes('hard');
   const songInfo = sessionInfo?.song;
+  const singerInfo = sessionInfo?.singer;
   const songProgress =
     songInfo && songInfo.running && songInfo.barCount > 0
       ? (((songInfo.bar % songInfo.barCount) + (songInfo.beat + songInfo.beatPhase) / (sessionInfo?.beatsPerBar ?? 4)) /
@@ -463,38 +485,81 @@ function Stage({
         </div>
       </div>
 
-      <section className="song-deck" aria-labelledby="song-deck-title">
-        <div className="song-deck__intro">
-          <span className="control-label">Karaoke set</span>
-          <h2 id="song-deck-title">Pick the song. We’ll cover the band.</h2>
-          <p>Charts unlock automatically as Keona lands them. No copied audio—just generated accompaniment and your performance.</p>
+      <section className="singer-panel" aria-labelledby="singer-title">
+        <div className="singer-panel__intro">
+          <span className="singer-panel__mark" aria-hidden="true">
+            V
+          </span>
+          <div>
+            <span className="control-label">Optional layer</span>
+            <h2 id="singer-title">Vocals</h2>
+            <p>Sing while you play any instrument. Use wired headphones to avoid feedback.</p>
+          </div>
         </div>
-        <div className="song-deck__list">
-          {KARAOKE_CATALOG.map((song, index) => {
-            const ready = Object.hasOwn(SONGS, song.id);
-            return (
-              <button
-                type="button"
-                className="song-card"
-                key={song.id}
-                data-selected={songId === song.id ? '' : undefined}
-                disabled={!ready}
-                onClick={() => pickSong(song.id)}
-                aria-pressed={songId === song.id}
-              >
-                <span className="song-card__number">{String(index + 1).padStart(2, '0')}</span>
-                <span className="song-card__title">
-                  <strong>{song.title}</strong>
-                  <small>{song.artist}</small>
-                </span>
-                <span className="song-card__meta">
-                  <small>{song.feel}</small>
-                  <span>{song.chords}</span>
-                </span>
-                <span className="song-card__status">{ready ? 'Ready' : 'Chart pending'}</span>
-              </button>
-            );
-          })}
+
+        <div className="singer-panel__mic">
+          <button
+            type="button"
+            className="mic-button"
+            data-enabled={singerInfo?.enabled ? '' : undefined}
+            disabled={!live || micPending || singerInfo?.available === false}
+            onClick={() => void toggleSinger()}
+          >
+            <span className="mic-button__dot" aria-hidden="true" />
+            {micPending
+              ? 'Requesting microphone…'
+              : singerInfo?.available === false
+                ? 'Microphone unavailable'
+                : singerInfo?.enabled
+                  ? 'Turn microphone off'
+                  : 'Enable microphone'}
+          </button>
+          <div className="mic-level" aria-label={`Microphone level ${Math.round((singerInfo?.level ?? 0) * 100)}%`}>
+            <span>Level</span>
+            <i>
+              <b style={{ width: `${Math.round((singerInfo?.level ?? 0) * 100)}%` }} />
+            </i>
+          </div>
+          <small>Permission is requested only when you press Enable.</small>
+        </div>
+
+        <div className="singer-panel__effects">
+          <label>
+            <span>
+              Echo <output>{Math.round(echo * 100)}%</output>
+            </span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={echo}
+              disabled={!live}
+              onChange={(event) => changeEcho(Number(event.target.value))}
+            />
+          </label>
+          <label>
+            <span>
+              Reverb <output>{Math.round(reverb * 100)}%</output>
+            </span>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={reverb}
+              disabled={!live}
+              onChange={(event) => changeReverb(Number(event.target.value))}
+            />
+          </label>
+        </div>
+
+        <div className="singer-panel__status" data-state={singerInfo?.error ? 'error' : singerInfo?.enabled ? 'live' : 'idle'}>
+          <i />
+          <span>
+            {singerInfo?.error ??
+              (singerInfo?.enabled ? 'Mic is live through the band mix' : live ? 'Vocals are off' : 'Start Band to enable vocals')}
+          </span>
         </div>
       </section>
 

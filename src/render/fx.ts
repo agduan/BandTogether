@@ -1,6 +1,7 @@
 import type { Config } from '@/app/config';
 import { bus } from '@/core/bus';
-import type { DrumHitEvent, OverlayLayer, PadId, Vec2, VisionFrame } from '@/core/types';
+import type { DrumHitEvent, OverlayLayer, PadId, StrumEvent, Vec2, VisionFrame } from '@/core/types';
+import type { GuitarView, InstrumentView } from '@/core/views';
 import { kitGeometry, stickTip, type PadGeometry } from '@/detectors/drumHitDetector';
 
 /**
@@ -184,6 +185,188 @@ export class DrumsFx implements OverlayLayer {
     }
     ctx.restore();
   }
+}
+
+const STRUM_GLOW_MS = 440;
+const GUITAR_GOLD = '#ffd46a';
+const GUITAR_CORAL = '#ef6a4c';
+
+/** Compact string band for one player; intentionally leaves most of the camera unobscured. */
+export class GuitarFx implements OverlayLayer {
+  private lastStrum: StrumEvent | null = null;
+  private readonly unsubscribe: () => void;
+
+  constructor(
+    private readonly playerId: number,
+    private readonly view: () => InstrumentView | null,
+  ) {
+    this.unsubscribe = bus.on('guitar.strum', (event) => this.onStrum(event));
+  }
+
+  dispose(): void {
+    this.unsubscribe();
+  }
+
+  onStrum(event: StrumEvent): void {
+    if (event.playerId === this.playerId) this.lastStrum = event;
+  }
+
+  draw(ctx: CanvasRenderingContext2D, frame: VisionFrame, toPx: (v: Vec2) => Vec2): void {
+    const view = this.guitarView();
+    if (!view) return;
+
+    const unit = toPx({ x: 0, y: 1 }).y - toPx({ x: 0, y: 0 }).y;
+    const scale = unit / 480;
+    const { band } = view;
+    const age = this.lastStrum ? frame.t - this.lastStrum.t : Infinity;
+    const glow = Math.max(0, 1 - age / STRUM_GLOW_MS);
+    const velocity = this.lastStrum?.velocity ?? 0;
+
+    this.drawStrings(ctx, toPx, band.x0, band.x1, band.y, frame.t, glow, velocity, scale);
+    this.drawStrumZone(ctx, toPx, view, glow, velocity, scale);
+    this.drawChordPill(ctx, toPx, view, glow, scale);
+  }
+
+  private guitarView(): GuitarView | null {
+    const current = this.view();
+    return current?.instrument === 'guitar' ? current : null;
+  }
+
+  private drawStrings(
+    ctx: CanvasRenderingContext2D,
+    toPx: (v: Vec2) => Vec2,
+    x0: number,
+    x1: number,
+    y: number,
+    t: number,
+    glow: number,
+    velocity: number,
+    scale: number,
+  ): void {
+    const direction = this.lastStrum?.direction === 'up' ? -1 : 1;
+    const elapsed = this.lastStrum ? Math.max(0, t - this.lastStrum.t) : 0;
+    const phase = elapsed * 0.045 * direction;
+    const amplitude = 0.006 * glow * Math.max(0.35, velocity);
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.shadowColor = GUITAR_GOLD;
+    ctx.shadowBlur = 12 * glow * scale;
+    for (let string = 0; string < 6; string++) {
+      const offset = (string - 2.5) * 0.014;
+      ctx.strokeStyle = `rgba(255, 239, 194, ${0.48 + string * 0.07})`;
+      ctx.lineWidth = (0.8 + string * 0.18) * scale;
+      ctx.beginPath();
+      const points = 28;
+      for (let point = 0; point <= points; point++) {
+        const u = point / points;
+        const envelope = Math.sin(Math.PI * u);
+        const wave = amplitude * envelope * Math.sin(u * Math.PI * 8 + phase + string * 0.55);
+        const p = toPx({ x: x0 + (x1 - x0) * u, y: y + offset + wave });
+        if (point === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  private drawStrumZone(
+    ctx: CanvasRenderingContext2D,
+    toPx: (v: Vec2) => Vec2,
+    view: GuitarView,
+    glow: number,
+    velocity: number,
+    scale: number,
+  ): void {
+    const { band } = view;
+    const a = toPx({ x: band.x0, y: band.y - band.halfHeight });
+    const b = toPx({ x: band.x1, y: band.y + band.halfHeight });
+    const centerA = toPx({ x: band.x0, y: band.y });
+    const centerB = toPx({ x: band.x1, y: band.y });
+
+    ctx.save();
+    ctx.setLineDash([7 * scale, 7 * scale]);
+    ctx.lineWidth = (1.2 + glow * 1.8) * scale;
+    ctx.strokeStyle = `rgba(255, 212, 106, ${0.4 + 0.5 * glow})`;
+    ctx.fillStyle = `rgba(255, 212, 106, ${0.035 + 0.12 * glow})`;
+    ctx.shadowColor = GUITAR_GOLD;
+    ctx.shadowBlur = 20 * glow * scale;
+    ctx.beginPath();
+    ctx.roundRect(a.x, a.y, b.x - a.x, b.y - a.y, 8 * scale);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.45 + glow * 0.55;
+    ctx.beginPath();
+    ctx.moveTo(centerA.x, centerA.y);
+    ctx.lineTo(centerB.x, centerB.y);
+    ctx.stroke();
+
+    if (glow > 0 && this.lastStrum) {
+      const down = this.lastStrum.direction === 'down';
+      const x = centerA.x + (centerB.x - centerA.x) * 0.5;
+      const y0 = down ? a.y : b.y;
+      const y1 = down ? b.y : a.y;
+      ctx.strokeStyle = GUITAR_CORAL;
+      ctx.lineWidth = (3 + velocity * 7) * scale;
+      ctx.globalAlpha = glow;
+      ctx.beginPath();
+      ctx.moveTo(x, y0);
+      ctx.lineTo(x, y1);
+      ctx.stroke();
+      ctx.fillStyle = GUITAR_CORAL;
+      ctx.beginPath();
+      ctx.moveTo(x, y1);
+      ctx.lineTo(x - 6 * scale, y1 + (down ? -8 : 8) * scale);
+      ctx.lineTo(x + 6 * scale, y1 + (down ? -8 : 8) * scale);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.globalAlpha = 0.72;
+      ctx.fillStyle = '#fff';
+      ctx.font = `700 ${Math.round(10 * scale)}px ui-monospace, monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('STRUM HERE', (a.x + b.x) / 2, a.y - 7 * scale);
+    }
+    ctx.restore();
+  }
+
+  private drawChordPill(
+    ctx: CanvasRenderingContext2D,
+    toPx: (v: Vec2) => Vec2,
+    view: GuitarView,
+    glow: number,
+    scale: number,
+  ): void {
+    const anchor = toPx({ x: view.band.x0, y: view.band.y - view.band.halfHeight });
+    const label = view.chord ?? '—';
+    const width = Math.max(54, 28 + label.length * 10) * scale;
+    const height = 24 * scale;
+    const x = anchor.x;
+    const y = anchor.y - height - 7 * scale;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(16, 16, 14, 0.76)';
+    ctx.strokeStyle = GUITAR_GOLD;
+    ctx.lineWidth = (1.2 + glow) * scale;
+    ctx.shadowColor = GUITAR_GOLD;
+    ctx.shadowBlur = 10 * glow * scale;
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, height, height / 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff5dc';
+    ctx.font = `750 ${Math.round(12 * scale)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + width / 2, y + height / 2 + scale);
+    ctx.restore();
+  }
+
 }
 
 function hexWithAlpha(hex: string, alpha: number): string {

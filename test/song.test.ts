@@ -6,7 +6,7 @@ import { SONGS, getSong } from '@/song/songs';
 import { barCount, chordAtBar, flattenBars, parseSong } from '@/song/types';
 
 /** Chords with a voicing in song/chords.ts. */
-const ALLOWED_CHORDS = new Set(['G', 'C', 'D', 'Em', 'Am', 'A', 'F']);
+const ALLOWED_CHORDS = new Set(['G', 'C', 'D', 'Em', 'Am', 'A']);
 const DEMO_SONGS = ['viva-la-vida', 'counting-stars', 'perfect'];
 
 describe('song schema and lookups', () => {
@@ -15,7 +15,7 @@ describe('song schema and lookups', () => {
       expect(() => parseSong(song)).not.toThrow();
       for (const bar of flattenBars(song)) expect(ALLOWED_CHORDS.has(bar.chord)).toBe(true);
     }
-    expect(getSong('nope').title).toBe(getSong('saints').title);
+    expect(getSong('nope').title).toBe(getSong('viva-la-vida').title);
   });
 
   it('ships the three demo charts under the ids the song deck looks up, chords only', () => {
@@ -28,7 +28,7 @@ describe('song schema and lookups', () => {
       expect(bars.every((b) => b.lyric === undefined)).toBe(true);
     }
     expect(flattenBars(getSong('viva-la-vida')).slice(0, 4).map((b) => b.chord)).toEqual(['C', 'D', 'G', 'Em']);
-    expect(flattenBars(getSong('counting-stars')).slice(0, 4).map((b) => b.chord)).toEqual(['Am', 'C', 'G', 'F']);
+    expect(flattenBars(getSong('counting-stars')).slice(0, 4).map((b) => b.chord)).toEqual(['Em', 'G', 'D', 'C']);
     const perfect = flattenBars(getSong('perfect'));
     expect(perfect.slice(0, 4).map((b) => b.chord)).toEqual(['G', 'Em', 'C', 'D']);
     expect(perfect.filter((b) => b.section === 'chorus').slice(0, 4).map((b) => b.chord)).toEqual(['Em', 'C', 'G', 'D']);

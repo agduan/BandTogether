@@ -5,7 +5,7 @@ import { Session } from '@/app/session';
 import { bus } from '@/core/bus';
 import { FREEPLAY_CONTEXT } from '@/audio/modes';
 import type { AppEvent, SongContext } from '@/core/types';
-import { DebugOverlay } from '@/detectors/debugOverlay';
+import { GuitarFx } from '@/render/fx';
 
 /** A Session never touches the camera, model or audio context until `start()`, so fakes are enough. */
 function makeSession(): Session {
@@ -32,20 +32,20 @@ describe('Session seams', () => {
     expect(info.players[0].score.points).toBe(0);
     // HudInfo fields stay at the top level.
     expect(info).toMatchObject({ mode: 'easy', songTitle: null, songRunning: false, beatsPerBar: 4, paused: false });
-    expect(info.song).toMatchObject({ id: 'saints', bpm: 120, barCount: 16, running: false, lyric: null });
+    expect(info.song).toMatchObject({ id: 'viva-la-vida', bpm: 138, barCount: 20, running: false, lyric: null });
     expect(info.backing.enabled).toBe(true);
     expect(info.singer).toMatchObject({ enabled: false, level: 0, error: null });
     s.stop();
   });
 
-  it('setInstrument swaps the controller, falls back to the debug overlay, and stays silent', () => {
+  it('setInstrument swaps the controller, uses registered guitar art, and stays silent', () => {
     const s = makeSession();
     const drums = s.controllers[0];
     s.setInstrument('guitar');
     const guitar = s.controllers[0];
     expect(guitar).not.toBe(drums);
     expect(guitar.instrument.id).toBe('guitar');
-    expect(guitar.instrument.overlay).toBeInstanceOf(DebugOverlay);
+    expect(guitar.instrument.overlay).toBeInstanceOf(GuitarFx);
     expect(guitar.instrument.view?.()).toMatchObject({ instrument: 'guitar', chord: null });
     expect(s.info().instrument).toBe('guitar');
 

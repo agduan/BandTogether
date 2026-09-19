@@ -3,7 +3,7 @@ import { parseSong } from '../types';
 
 /**
  * Built-in charts. One chord per bar, and every chord needs a voicing in
- * `song/chords.ts` (G C D Em Am A F). The demo charts are chord progressions
+ * `song/chords.ts` (G C D Em Am A). The demo charts are chord progressions
  * only, typed by hand: no lyrics, no recordings, no scraped chord data. Lyrics
  * appear on public-domain songs only. Add a chart here or drop a JSON file
  * into public/songs/ and load it through `parseSong`.
@@ -28,16 +28,16 @@ const VIVA_LA_VIDA: Song = parseSong({
   ],
 });
 
-/** i III VII VI in A minor. The card in the song deck shows the same four chords. */
+/** i III VII VI, transposed from A minor to E minor so every chord has an easy guitar voicing (no F). */
 const COUNTING_STARS: Song = parseSong({
   title: 'Counting Stars',
   bpm: 122,
-  key: 'Am',
+  key: 'G',
   timeSig: [4, 4],
   sections: [
-    { name: 'intro', bars: loop('Am C G F', 1) },
-    { name: 'verse', bars: loop('Am C G F', 2) },
-    { name: 'chorus', bars: loop('Am C G F', 2) },
+    { name: 'intro', bars: loop('Em G D C', 1) },
+    { name: 'verse', bars: loop('Em G D C', 2) },
+    { name: 'chorus', bars: loop('Em G D C', 2) },
   ],
 });
 
@@ -108,7 +108,7 @@ export const SONGS: Record<string, Song> = {
   campfire: CAMPFIRE,
 };
 
-export const DEFAULT_SONG_ID = 'saints';
+export const DEFAULT_SONG_ID = 'viva-la-vida';
 
 export function getSong(id: string): Song {
   return SONGS[id] ?? SONGS[DEFAULT_SONG_ID];
