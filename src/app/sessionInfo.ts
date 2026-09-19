@@ -22,7 +22,7 @@ export interface SessionInfo {
   singer: SingerInfo;
   players: PlayerInfo[];
   band: {
-    /** On-beat fraction across all players' recent events, 0..1. */
+    /** Timing quality across all players' recent events, 0..1: perfect = 1, good = 0.5, miss = 0, averaged. */
     tightness: number;
   };
 }
@@ -69,7 +69,7 @@ export interface ScoreInfo {
   last: Judgement | null;
   /** Signed offset of the last event from the nearest grid line, ms (negative = early). */
   lastOffsetMs: number | null;
-  /** On-beat fraction over this player's recent events, 0..1. */
+  /** Timing quality over this player's recent events, 0..1: perfect = 1, good = 0.5, miss = 0, averaged. */
   tightness: number;
 }
 
