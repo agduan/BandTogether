@@ -20,6 +20,7 @@ const EVENT_TYPES_BY_INSTRUMENT = {
   drums: ['drum.hit'],
   guitar: ['guitar.strum', 'guitar.chord'],
   keyboard: ['piano.press', 'piano.release'],
+  bass: ['bass.pluck'],
 } as const satisfies Record<Instrument['id'], readonly InstrumentEvent['type'][]>;
 
 /**
@@ -82,6 +83,12 @@ export class InstrumentController {
         break;
       case 'guitar.strum': {
         const r = this.resolver.resolveStrum(e, song);
+        if (r.notes.some((n) => n !== null)) voice.trigger(r);
+        else return;
+        break;
+      }
+      case 'bass.pluck': {
+        const r = this.resolver.resolveBass(e, song);
         if (r.notes.some((n) => n !== null)) voice.trigger(r);
         else return;
         break;

@@ -35,6 +35,15 @@ describe('config URL overrides', () => {
     expect(DEFAULT_CONFIG.drum.vMin).toBe(1.0);
   });
 
+  it('the instrument-lane sections (bass, singer, backing, score, players) take URL overrides', () => {
+    const config = loadConfig('?bass.bins=4&singer.echo=0.5&backing.enabled=false&score.perfectMs=45&players.count=2');
+    expect(config.bass.bins).toBe(4);
+    expect(config.singer.echo).toBe(0.5);
+    expect(config.backing.enabled).toBe(false);
+    expect(config.score.perfectMs).toBe(45);
+    expect(config.players.count).toBe(2);
+  });
+
   it('loadConfig applies a given search string outside the browser', () => {
     const config = loadConfig('?strum.hyst=0.03');
     expect(config.strum.hyst).toBe(0.03);

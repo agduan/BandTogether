@@ -9,12 +9,15 @@ import { Overlay } from '@/render/overlay';
 import { Recorder, Replayer, type Recording, type ReplayerOptions } from '@/vision/recorder';
 import { AudioEngine } from '@/audio/engine';
 import { createResolver, FREEPLAY_CONTEXT } from '@/audio/modes';
+import { SingerChannel } from '@/audio/singer';
 import { SongClock } from '@/audio/songClock';
-import type { PlayMode, SongContext } from '@/core/types';
+import type { InstrumentId, PlayerId, PlayMode, SongContext } from '@/core/types';
 import { Hud } from '@/render/hud';
 import { getSong } from '@/song/songs';
+import { barAt, barCount } from '@/song/types';
 import { InstrumentController } from './controller';
 import { createInstrument } from './instruments';
+import { EMPTY_SCORE, type PlayerInfo, type SessionInfo, type SongInfo } from './sessionInfo';
 
 export interface SessionStats {
   fps: number;
@@ -32,15 +35,18 @@ const HAND_COLORS = ['#ff5c8a', '#5cd6ff', '#ffd75c', '#8aff5c'];
 
 /**
  * Top-level runtime: camera → hand landmarker → frame adapter → instrument
- * controller (detectors → bus → mode → voice) → overlay, on the video frame
- * loop. Player 0 plays drums in hard mode until the pickers arrive (commit 17).
+ * controllers (detectors → bus → mode → voice) → overlay, on the video frame
+ * loop. One controller per player; player 0 starts on drums and the UI swaps
+ * instruments with `setInstrument`. The UI reads state from `info()`.
  */
 export class Session {
   readonly camera: Camera;
   readonly overlay: Overlay;
   readonly audio: AudioEngine;
-  readonly controller: InstrumentController;
+  readonly singer: SingerChannel;
   readonly hud: Hud;
+  /** One per player, index = player id. */
+  private readonly players: InstrumentController[] = [];
   private songClock: SongClock | null = null;
   readonly stats: SessionStats = {
     fps: 0,
@@ -72,21 +78,134 @@ export class Session {
     this.config = config;
     this.adapter = new FrameAdapter(config);
     this.audio = new AudioEngine(config.audio);
-    const drums = createInstrument('drums', { config, output: () => this.audio.output, playerId: 0 });
-    void this.audio.addVoice(drums.voice);
-    this.controller = new InstrumentController({
-      playerId: 0,
-      instrument: drums,
-      resolver: createResolver(config.play.mode),
+    this.singer = new SingerChannel(config.singer, () => this.audio.output);
+    this.players.push(this.createController('drums', 0));
+    this.hud = new Hud(() => this.info());
+  }
+
+  // --- players and instruments ---------------------------------------------
+
+  get controllers(): ReadonlyArray<InstrumentController> {
+    return this.players;
+  }
+
+  private createController(id: InstrumentId, playerId: PlayerId): InstrumentController {
+    const instrument = createInstrument(id, {
+      config: this.config,
+      output: () => this.audio.output,
+      playerId,
+      song: () => this.songContext(),
+    });
+    void this.audio.addVoice(instrument.voice);
+    return new InstrumentController({
+      playerId,
+      instrument,
+      resolver: createResolver(this.config.play.mode),
       audio: this.audio,
       song: () => this.songContext(),
     });
-    this.hud = new Hud(() => ({
+  }
+
+  /** Swap a player's instrument. Safe while running, paused or mid-song. */
+  setInstrument(id: InstrumentId, playerId: PlayerId = 0): void {
+    const old = this.players[playerId];
+    if (!old || old.instrument.id === id) return;
+    const next = this.createController(id, playerId); // throws on an unknown id before anything is torn down
+    old.dispose();
+    this.audio.removeVoice(old.instrument.voice);
+    this.players[playerId] = next;
+    // The auto kick plays through a drummer's voice: follow the swap.
+    if (this.songClock) this.songClock.opts.kickVoice = this.drumsVoice();
+  }
+
+  /** Stub until row 16 (two players by screen half): records the count, still one player. */
+  setNumPlayers(n: number): void {
+    this.config.players.count = Math.min(2, Math.max(1, Math.round(n)));
+  }
+
+  /** Snap a player's instrument to where they are right now (the C key). Always answers with a toast. */
+  calibrate(playerId: PlayerId = 0): boolean {
+    const instrument = this.players[playerId]?.instrument;
+    let ok = false;
+    let text: string;
+    if (!instrument?.calibrate) text = `Nothing to calibrate on ${instrument?.id ?? 'that player'}`;
+    else if (!this.lastFrame) text = 'Start the camera first';
+    else {
+      ok = instrument.calibrate(this.lastFrame);
+      text = ok ? 'Calibrated' : 'Hold your hands where you want to play, then calibrate';
+    }
+    bus.emit({ type: 'ui.toast', t: performance.now(), text, kind: ok ? 'success' : 'warn' });
+    return ok;
+  }
+
+  resetCalibration(): void {
+    for (const c of this.players) c.instrument.resetCalibration?.();
+  }
+
+  /** Stub until K2 (generated backing band): records the choice. */
+  setBacking(on: boolean): void {
+    this.config.backing.enabled = on;
+  }
+
+  /** The foot: play the kick for whoever is on drums (spacebar). Goes through the bus like a real hit. */
+  kick(velocity = 0.9): void {
+    const drummer = this.players.find((c) => c.instrument.id === 'drums');
+    if (!drummer) return;
+    bus.emit({ type: 'drum.hit', t: performance.now(), playerId: drummer.playerId, pad: 'kick', velocity });
+  }
+
+  private drumsVoice() {
+    return this.players.find((c) => c.instrument.id === 'drums')?.instrument.voice ?? null;
+  }
+
+  /** Snapshot of everything the UI and HUD show. Cheap: poll it every frame or on a timer. */
+  info(): SessionInfo {
+    const hands = this.lastFrame?.hands ?? [];
+    const players: PlayerInfo[] = this.players.map((c) => {
+      const view = c.instrument.view?.() ?? null;
+      return {
+        id: c.playerId,
+        instrument: c.instrument.id,
+        hands: hands.filter((h) => h.playerId === c.playerId).length,
+        calibration: view?.instrument === 'drums' ? view.calibration : 'none',
+        score: { ...EMPTY_SCORE }, // K7
+      };
+    });
+    return {
       mode: this.mode,
       songTitle: this.songClock?.song.title ?? null,
       songRunning: this.songRunning,
       beatsPerBar: this.songClock?.beatsPerBar ?? 4,
-    }));
+      instrument: this.players[0].instrument.id,
+      paused: this.isPaused,
+      song: this.songInfo(),
+      backing: { enabled: this.config.backing.enabled },
+      singer: this.singer.info(),
+      players,
+      band: { tightness: 0 }, // K7
+    };
+  }
+
+  private songInfo(): SongInfo {
+    const id = this.config.play.song;
+    const song = this.songClock?.song ?? getSong(id);
+    const ctx = this.songContext();
+    const running = this.songRunning;
+    const bar = running ? barAt(song, ctx.bar) : null;
+    return {
+      id,
+      title: song.title,
+      bpm: song.bpm,
+      bar: ctx.bar,
+      beat: ctx.beat,
+      beatPhase: ctx.beatPhase,
+      chord: ctx.chord,
+      lyric: bar?.lyric ?? null,
+      nextLyric: running ? (barAt(song, ctx.bar + 1).lyric ?? null) : null,
+      section: bar?.section ?? null,
+      barCount: barCount(song),
+      running,
+    };
   }
 
   // --- mode and song -------------------------------------------------------
@@ -97,7 +216,7 @@ export class Session {
 
   setMode(mode: PlayMode): void {
     this.config.play.mode = mode;
-    this.controller.resolver = createResolver(mode);
+    for (const c of this.players) c.resolver = createResolver(mode);
   }
 
   get songRunning(): boolean {
@@ -117,7 +236,7 @@ export class Session {
     this.songClock = new SongClock(getSong(songId), {
       click: play.click,
       autoKick: play.autoKick && this.mode === 'easy',
-      kickVoice: this.controller.instrument.id === 'drums' ? this.controller.instrument.voice : null,
+      kickVoice: this.drumsVoice(),
     });
     this.songClock.start();
     if (this.isPaused) this.songClock.pause();
@@ -197,7 +316,7 @@ export class Session {
     }
     this.camera.video.pause();
     this.songClock?.pause();
-    this.controller.instrument.voice.releaseAll();
+    for (const c of this.players) c.instrument.voice.releaseAll();
     const aspect = this.lastFrame?.aspect ?? this.camera.aspect;
     this.overlay.drawLabel('PAUSED', { x: aspect / 2, y: 0.08 }, '#ffd75c');
   }
@@ -209,9 +328,13 @@ export class Session {
     // Tracks and detector state are stale after a freeze: start clean so the
     // first frame back can't fire a phantom hit.
     this.adapter.reset();
-    this.controller.reset();
+    this.resetControllers();
     this.fpsMeter.reset();
     this.loop.start();
+  }
+
+  private resetControllers(): void {
+    for (const c of this.players) c.reset();
   }
 
   /** Leave the paused state without touching the frame loop (callers restart it themselves). */
@@ -258,7 +381,7 @@ export class Session {
     this.replayer.stop();
     this.replayer = null;
     this.adapter.reset();
-    this.controller.reset();
+    this.resetControllers();
     this.fpsMeter.reset();
     if (this.loop && !this.disposed) this.loop.start();
   }
@@ -276,7 +399,7 @@ export class Session {
     this.stats.height = this.camera.height;
     this.fpsMeter.reset();
     this.adapter.reset();
-    this.controller.reset();
+    this.resetControllers();
     this.loop.start();
   }
 
@@ -291,7 +414,8 @@ export class Session {
   stop(): void {
     this.disposed = true;
     this.teardown();
-    this.controller.dispose();
+    for (const c of this.players) c.dispose();
+    this.singer.dispose();
     this.hud.dispose();
     this.onPhase('idle');
   }
@@ -321,14 +445,14 @@ export class Session {
     this.lastFrame = frame;
     // Sound first: the controller triggers the voice synchronously, so nothing
     // below (recording, drawing) adds to the motion-to-sound latency.
-    this.controller.onFrame(frame);
+    for (const c of this.players) c.onFrame(frame);
     this.recorder.push(frame);
     bus.emit({ type: 'vision.frame', frame });
 
     this.overlay.syncSize();
     this.overlay.aspect = frame.aspect;
     this.overlay.clear();
-    this.controller.instrument.overlay.draw(this.overlay.ctx, frame, this.overlay.toPx);
+    for (const c of this.players) c.instrument.overlay.draw(this.overlay.ctx, frame, this.overlay.toPx);
     this.hud.draw(this.overlay.ctx, frame, this.overlay.toPx);
 
     if (this.config.debug.skeleton) {

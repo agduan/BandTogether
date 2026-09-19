@@ -48,6 +48,12 @@ export class AudioEngine {
     if (this.state !== 'idle' && this.state !== 'error') await voice.load();
   }
 
+  /** Forget a voice that was swapped out (its ringing notes are cut). */
+  removeVoice(voice: Voice): void {
+    voice.releaseAll();
+    if (this.voices.get(voice.id) === voice) this.voices.delete(voice.id);
+  }
+
   get output(): Tone.Gain {
     if (!this.master) throw new Error('AudioEngine not started');
     return this.master;
