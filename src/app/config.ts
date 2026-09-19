@@ -102,6 +102,18 @@ export interface Config {
     lookAhead: number;
     latencyHint: 'interactive' | 'balanced' | 'playback';
   };
+  play: {
+    /** 'easy': the song decides the notes. 'hard': the gesture does. */
+    mode: 'easy' | 'hard';
+    /** Built-in song id (see song/songs). */
+    song: string;
+    /** Metronome click while the song runs. */
+    click: boolean;
+    /** Song clock plays the kick on beats 1 and 3 in easy mode. */
+    autoKick: boolean;
+    /** Start the song as soon as the camera is running. */
+    autostartSong: boolean;
+  };
   debug: {
     panel: boolean;
     skeleton: boolean;
@@ -175,6 +187,7 @@ export const DEFAULT_CONFIG: Config = {
     latchMs: 50,
   },
   audio: { lookAhead: 0.01, latencyHint: 'interactive' },
+  play: { mode: 'easy', song: 'saints', click: true, autoKick: true, autostartSong: false },
   debug: { panel: false, skeleton: true, latencyMeter: false, autostart: false },
 };
 

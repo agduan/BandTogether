@@ -193,8 +193,12 @@ export interface Detector<E extends InstrumentEvent = InstrumentEvent> {
 
 /** What the song clock exposes to note resolvers. */
 export interface SongContext {
+  /** 0 when no song clock is running (free play). */
   bpm: number;
+  beatsPerBar: number;
+  /** 0-based bar index into the flattened chart. */
   bar: number;
+  /** 0-based beat inside the bar. */
   beat: number;
   /** Fractional position inside the beat, 0..1. */
   beatPhase: number;

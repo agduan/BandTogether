@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadConfig } from './config';
 import { Session, type SessionPhase, type SessionStats } from './session';
 import type { CameraInfo } from '@/vision/camera';
+import { bus } from '@/core/bus';
+import type { PlayMode } from '@/core/types';
 import { DebugPanel } from '@/render/DebugPanel';
+import { SONGS } from '@/song/songs';
 
 const PHASE_TEXT: Record<SessionPhase, string> = {
   idle: '',
@@ -56,10 +59,21 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
   const [deviceId, setDeviceId] = useState('');
   const [session, setSession] = useState<Session | null>(null);
   const [showDebug, setShowDebug] = useState(config.debug.panel);
+  const [mode, setMode] = useState<PlayMode>(config.play.mode);
+  const [songId, setSongId] = useState(config.play.song);
+  const [songRunning, setSongRunning] = useState(false);
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === '`' && !(ev.target instanceof HTMLInputElement)) setShowDebug((v) => !v);
+      const typing =
+        ev.target instanceof HTMLInputElement || ev.target instanceof HTMLSelectElement || ev.target instanceof HTMLTextAreaElement;
+      if (typing) return;
+      if (ev.key === '`') setShowDebug((v) => !v);
+      // Spacebar = kick pedal (any USB keyboard on the floor works). Always a kick, in both modes.
+      if (ev.code === 'Space') {
+        ev.preventDefault();
+        if (!ev.repeat) bus.emit({ type: 'drum.hit', t: performance.now(), playerId: 0, pad: 'kick', velocity: 0.9 });
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -86,7 +100,10 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
       })
       .catch(() => {});
 
-    const statsTimer = window.setInterval(() => setStats({ ...session.stats }), 250);
+    const statsTimer = window.setInterval(() => {
+      setStats({ ...session.stats });
+      setSongRunning(session.songRunning);
+    }, 250);
 
     return () => {
       window.clearInterval(statsTimer);
@@ -99,6 +116,29 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
   const onPickCamera = async (id: string) => {
     setDeviceId(id);
     await sessionRef.current?.switchCamera(id);
+  };
+
+  const toggleMode = () => {
+    const next: PlayMode = mode === 'easy' ? 'hard' : 'easy';
+    setMode(next);
+    sessionRef.current?.setMode(next);
+    // The auto kick belongs to easy mode: restart the clock so the option takes effect.
+    if (sessionRef.current?.songRunning) sessionRef.current.startSong();
+  };
+
+  const toggleSong = () => {
+    const s = sessionRef.current;
+    if (!s) return;
+    if (s.songRunning) s.stopSong();
+    else s.startSong(songId);
+    setSongRunning(s.songRunning);
+  };
+
+  const pickSong = (id: string) => {
+    setSongId(id);
+    const s = sessionRef.current;
+    if (s?.songRunning) s.startSong(id);
+    else if (s) s.config.play.song = id;
   };
 
   const aspect = stats && stats.width > 0 ? `${stats.width} / ${stats.height}` : '4 / 3';
@@ -124,6 +164,33 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
               `${stats.width}×${stats.height} · ${stats.usingVideoFrameCallback ? 'rVFC' : 'rAF'} · ` +
               `audio ${sessionRef.current?.audio.state ?? '-'}`
             : detail}
+        </span>
+        <span className="stage__controls">
+          <button
+            className={`stage__btn ${mode === 'easy' ? 'stage__btn--easy' : 'stage__btn--hard'}`}
+            onClick={toggleMode}
+            disabled={phase !== 'running'}
+            title="Easy: the song picks the drum. Hard: the pad you hit."
+          >
+            {mode === 'easy' ? 'EASY' : 'HARD'}
+          </button>
+          <select
+            className="stage__camera"
+            value={songId}
+            onChange={(e) => pickSong(e.target.value)}
+            disabled={phase !== 'running'}
+            aria-label="Song"
+          >
+            {Object.entries(SONGS).map(([id, s]) => (
+              <option key={id} value={id}>
+                {s.title} · {s.bpm} bpm
+              </option>
+            ))}
+          </select>
+          <button className="stage__btn" onClick={toggleSong} disabled={phase !== 'running'} title="Start/stop the song clock">
+            {songRunning ? '■ stop' : '▶ play'}
+          </button>
+          <span className="stage__hint">space = kick</span>
         </span>
         <button className="stage__debug-toggle" onClick={() => setShowDebug((v) => !v)} title="Toggle debug panel (`)">
           debug

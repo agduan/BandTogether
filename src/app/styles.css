@@ -134,6 +134,44 @@ body {
   max-width: 50%;
 }
 
+.stage__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stage__btn {
+  background: #1b2029;
+  color: #e8ecf1;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.stage__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.stage__btn--easy {
+  background: #5cd6ff;
+  color: #0b0d12;
+}
+
+.stage__btn--hard {
+  background: #ff5c8a;
+  color: #0b0d12;
+}
+
+.stage__hint {
+  color: #6c7686;
+  font-size: 0.75rem;
+}
+
 .stage__debug-toggle {
   background: transparent;
   color: #9aa4b2;

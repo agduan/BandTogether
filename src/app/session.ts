@@ -8,7 +8,11 @@ import { bus } from '@/core/bus';
 import { Overlay } from '@/render/overlay';
 import { Recorder, Replayer, type Recording, type ReplayerOptions } from '@/vision/recorder';
 import { AudioEngine } from '@/audio/engine';
-import { HardMode } from '@/audio/modes';
+import { createResolver, FREEPLAY_CONTEXT } from '@/audio/modes';
+import { SongClock } from '@/audio/songClock';
+import type { PlayMode, SongContext } from '@/core/types';
+import { Hud } from '@/render/hud';
+import { getSong } from '@/song/songs';
 import { InstrumentController } from './controller';
 import { createInstrument } from './instruments';
 
@@ -36,6 +40,8 @@ export class Session {
   readonly overlay: Overlay;
   readonly audio: AudioEngine;
   readonly controller: InstrumentController;
+  readonly hud: Hud;
+  private songClock: SongClock | null = null;
   readonly stats: SessionStats = {
     fps: 0,
     inferenceMs: 0,
@@ -67,7 +73,61 @@ export class Session {
     this.audio = new AudioEngine(config.audio);
     const drums = createInstrument('drums', { config, output: () => this.audio.output, playerId: 0 });
     void this.audio.addVoice(drums.voice);
-    this.controller = new InstrumentController({ playerId: 0, instrument: drums, resolver: new HardMode(), audio: this.audio });
+    this.controller = new InstrumentController({
+      playerId: 0,
+      instrument: drums,
+      resolver: createResolver(config.play.mode),
+      audio: this.audio,
+      song: () => this.songContext(),
+    });
+    this.hud = new Hud(() => ({
+      mode: this.mode,
+      songTitle: this.songClock?.song.title ?? null,
+      songRunning: this.songRunning,
+      beatsPerBar: this.songClock?.beatsPerBar ?? 4,
+    }));
+  }
+
+  // --- mode and song -------------------------------------------------------
+
+  get mode(): PlayMode {
+    return this.config.play.mode;
+  }
+
+  setMode(mode: PlayMode): void {
+    this.config.play.mode = mode;
+    this.controller.resolver = createResolver(mode);
+  }
+
+  get songRunning(): boolean {
+    return this.songClock?.running ?? false;
+  }
+
+  get songTitle(): string | null {
+    return this.songClock?.song.title ?? getSong(this.config.play.song).title;
+  }
+
+  /** Start (or restart) the song clock; needs the audio engine running. */
+  startSong(songId = this.config.play.song): void {
+    if (this.audio.state !== 'running') return;
+    this.stopSong();
+    this.config.play.song = songId;
+    const { play } = this.config;
+    this.songClock = new SongClock(getSong(songId), {
+      click: play.click,
+      autoKick: play.autoKick && this.mode === 'easy',
+      kickVoice: this.controller.instrument.id === 'drums' ? this.controller.instrument.voice : null,
+    });
+    this.songClock.start();
+  }
+
+  stopSong(): void {
+    this.songClock?.dispose();
+    this.songClock = null;
+  }
+
+  private songContext(): SongContext {
+    return this.songClock?.context() ?? FREEPLAY_CONTEXT;
   }
 
   async start(onPhase?: (phase: SessionPhase, detail?: string) => void): Promise<void> {
@@ -105,6 +165,7 @@ export class Session {
       this.fpsMeter.reset();
       this.loop.start();
       this.onPhase('running');
+      if (this.config.play.autostartSong) this.startSong();
     } catch (err) {
       this.teardown();
       if (this.disposed) return;
@@ -181,10 +242,12 @@ export class Session {
     this.disposed = true;
     this.teardown();
     this.controller.dispose();
+    this.hud.dispose();
     this.onPhase('idle');
   }
 
   private teardown(): void {
+    this.stopSong();
     this.audio.stop();
     this.replayer?.stop();
     this.replayer = null;
@@ -215,6 +278,7 @@ export class Session {
     this.overlay.aspect = frame.aspect;
     this.overlay.clear();
     this.controller.instrument.overlay.draw(this.overlay.ctx, frame, this.overlay.toPx);
+    this.hud.draw(this.overlay.ctx, frame, this.overlay.toPx);
 
     if (this.config.debug.skeleton) {
       for (const hand of frame.hands) {
