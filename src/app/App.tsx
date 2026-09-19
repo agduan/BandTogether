@@ -7,6 +7,8 @@ import type { CameraInfo } from '@/vision/camera';
 import type { PlayMode } from '@/core/types';
 import { ConfigControls, DebugPanel, resetConfigControls } from '@/render/DebugPanel';
 import { SONGS } from '@/song/songs';
+import bassIconUrl from '../../bass.png';
+import guitarIconUrl from '../../guitar.png';
 
 const PHASE_TEXT: Record<SessionPhase, string> = {
   idle: '',
@@ -23,6 +25,65 @@ const INSTRUMENT_LABELS: Record<PlayableInstrumentId, { label: string; mark: str
   bass: { label: 'Bass', mark: 'B', hint: 'Pluck the groove' },
 };
 
+type PlayerInstrument = PlayableInstrumentId | 'none';
+type PlayerCount = 1 | 2;
+
+interface PlayerSetup {
+  instrument: PlayerInstrument;
+  vocals: boolean;
+}
+
+type MultiplayerSession = Session & {
+  /** Optional until the shared multiplayer seam lands. */
+  setSinger?: (playerId: number | null) => void;
+};
+
+const PLAYER_DEFAULTS: [PlayerSetup, PlayerSetup] = [
+  { instrument: 'drums', vocals: false },
+  { instrument: 'guitar', vocals: false },
+];
+
+const PLAYER_INSTRUMENTS = [...INSTRUMENT_IDS, 'none'] as const;
+
+function instrumentLabel(id: PlayerInstrument): string {
+  return id === 'none' ? 'No instrument' : INSTRUMENT_LABELS[id].label;
+}
+
+function InstrumentIcon({ instrument }: { instrument: PlayerInstrument }) {
+  const common = {
+    viewBox: '0 0 48 48',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.8,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  };
+
+  switch (instrument) {
+    case 'drums':
+      return (
+        <svg {...common}>
+          <ellipse cx="24" cy="28" rx="13" ry="6" />
+          <path d="M11 28v9c0 3.3 5.8 6 13 6s13-2.7 13-6v-9M17 33v8M31 33v8M12 8l19 20M36 8 17 28" />
+          <circle cx="10.5" cy="6.5" r="2" />
+          <circle cx="37.5" cy="6.5" r="2" />
+        </svg>
+      );
+    case 'guitar':
+      return <img src={guitarIconUrl} alt="" aria-hidden="true" />;
+    case 'bass':
+      return <img src={bassIconUrl} alt="" aria-hidden="true" />;
+    case 'none':
+      return (
+        <svg {...common}>
+          <rect x="9" y="9" width="30" height="30" rx="8" />
+          <path d="M17 24h14" />
+        </svg>
+      );
+  }
+}
+
 type KaraokeSongInfo = SongInfo & {
   /** Keona's future song seam; the UI already has a place for it. */
   nextChord?: string | null;
@@ -30,6 +91,85 @@ type KaraokeSongInfo = SongInfo & {
 };
 
 type KaraokeSessionInfo = Omit<SessionInfo, 'song'> & { song: KaraokeSongInfo };
+
+function PlayerCard({
+  playerId,
+  setup,
+  live,
+  hands,
+  onInstrument,
+  onVocals,
+}: {
+  playerId: 0 | 1;
+  setup: PlayerSetup;
+  live: boolean;
+  hands: number;
+  onInstrument: (instrument: PlayerInstrument) => void;
+  onVocals: () => void;
+}) {
+  const ready = setup.instrument === 'none' ? setup.vocals : hands > 0;
+  const readiness = live
+    ? setup.instrument !== 'none' && hands > 0
+      ? `${hands} ${hands === 1 ? 'hand' : 'hands'} ready`
+      : playerId === 0
+        ? 'Left'
+        : 'Right'
+    : null;
+
+  return (
+    <article className="player-card" data-player={playerId + 1}>
+      <header className="player-card__header">
+        <span className="player-card__number" aria-hidden="true">
+          0{playerId + 1}
+        </span>
+        <h3>Player {playerId + 1}</h3>
+        {readiness && (
+          <span
+            className="player-card__ready"
+            data-ready={ready || setup.vocals ? '' : undefined}
+            data-position={setup.instrument === 'none' || hands === 0 ? '' : undefined}
+          >
+            <i />
+            {readiness}
+          </span>
+        )}
+      </header>
+
+      <fieldset>
+        <legend className="sr-only">Player {playerId + 1} instrument</legend>
+        <div className="player-card__instruments">
+          {PLAYER_INSTRUMENTS.map((id) => {
+            const item = id === 'none' ? { label: 'None', hint: 'Vocals or backing only' } : INSTRUMENT_LABELS[id];
+            return (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={setup.instrument === id}
+                title={item.hint}
+                onClick={() => onInstrument(id)}
+              >
+                <InstrumentIcon instrument={id} />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      </fieldset>
+
+      <button
+        type="button"
+        className="player-card__vocals"
+        aria-pressed={setup.vocals}
+        onClick={onVocals}
+        title="There is one shared microphone. Choosing this transfers vocals from the other player."
+      >
+        <span aria-hidden="true">{setup.vocals ? '●' : '○'}</span>
+        Vocals
+      </button>
+    </article>
+  );
+}
 
 export function App() {
   const config = useMemo(() => loadConfig(), []);
@@ -71,7 +211,10 @@ function Stage({
   const [deviceId, setDeviceId] = useState('');
   const [session, setSession] = useState<Session | null>(null);
   const [showDebug, setShowDebug] = useState(config.debug.panel);
-  const [instrument, setInstrument] = useState<PlayableInstrumentId>('drums');
+  const [playerCount, setPlayerCount] = useState<PlayerCount>(config.players.count >= 2 ? 2 : 1);
+  const [players, setPlayers] = useState<[PlayerSetup, PlayerSetup]>(() => structuredClone(PLAYER_DEFAULTS));
+  const [editingPlayers, setEditingPlayers] = useState(false);
+  const playerSetupRef = useRef({ count: playerCount, players });
   const [mode, setMode] = useState<PlayMode>(config.play.mode);
   const [songId, setSongId] = useState(config.play.song);
   const [songRunning, setSongRunning] = useState(false);
@@ -82,6 +225,8 @@ function Stage({
   const [echo, setEcho] = useState(config.singer.echo);
   const [reverb, setReverb] = useState(config.singer.reverb);
   const [, refreshConfig] = useState(0);
+
+  playerSetupRef.current = { count: playerCount, players };
 
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
@@ -110,6 +255,16 @@ function Stage({
     if (!video || !canvas) return;
 
     const session = new Session(video, canvas, config);
+    const setup = playerSetupRef.current;
+    session.setNumPlayers(setup.count);
+    setup.players.slice(0, setup.count).forEach((player, playerId) => {
+      if (player.instrument !== 'none') session.setInstrument(player.instrument, playerId);
+    });
+    (session as MultiplayerSession).setSinger?.(
+      setup.players.slice(0, setup.count).findIndex((player) => player.vocals) < 0
+        ? null
+        : setup.players.slice(0, setup.count).findIndex((player) => player.vocals),
+    );
     sessionRef.current = session;
     setSession(session);
     // Dev hook for console poking and headless checks: window.__airband.session
@@ -150,21 +305,55 @@ function Stage({
     await sessionRef.current?.switchCamera(id);
   };
 
-  const applyInstrument = (next: PlayableInstrumentId) => {
-    if (next === instrument) return;
-    const supportedModes = INSTRUMENT_MODES[next];
-    const nextMode = supportedModes.includes(mode) ? mode : supportedModes[0];
-    setInstrument(next);
-    sessionRef.current?.setInstrument(next);
-    if (nextMode !== mode) {
-      setMode(nextMode);
-      sessionRef.current?.setMode(nextMode);
-      if (sessionRef.current?.songRunning) sessionRef.current.startSong();
+  const updatePlayerInstrument = (playerId: 0 | 1, instrument: PlayerInstrument) => {
+    setPlayers((current) => {
+      const next = structuredClone(current);
+      next[playerId].instrument = instrument;
+      return next;
+    });
+  };
+
+  const togglePlayerVocals = (playerId: 0 | 1) => {
+    setPlayers((current) => {
+      const turningOn = !current[playerId].vocals;
+      return current.map((player, id) => ({
+        ...player,
+        vocals: turningOn && id === playerId,
+      })) as [PlayerSetup, PlayerSetup];
+    });
+  };
+
+  const applyPlayerSetup = () => {
+    config.players.count = playerCount;
+    const current = sessionRef.current;
+    if (current) {
+      current.setNumPlayers(playerCount);
+      players.slice(0, playerCount).forEach((player, playerId) => {
+        if (player.instrument !== 'none') current.setInstrument(player.instrument, playerId);
+      });
+      const singerId = players.slice(0, playerCount).findIndex((player) => player.vocals);
+      (current as MultiplayerSession).setSinger?.(singerId < 0 ? null : singerId);
     }
+
+    const assigned = players.slice(0, playerCount).filter((player) => player.instrument !== 'none');
+    const supportsHard = assigned.every((player) => INSTRUMENT_MODES[player.instrument as PlayableInstrumentId].includes('hard'));
+    if (!supportsHard && mode === 'hard') {
+      setMode('easy');
+      current?.setMode('easy');
+      if (current?.songRunning) current.startSong();
+    }
+    setEditingPlayers(false);
+  };
+
+  const startBand = () => {
+    applyPlayerSetup();
+    onStart();
   };
 
   const applyMode = (next: PlayMode) => {
-    if (next === mode || !INSTRUMENT_MODES[instrument].includes(next)) return;
+    const assigned = players.slice(0, playerCount).filter((player) => player.instrument !== 'none');
+    const supported = assigned.every((player) => INSTRUMENT_MODES[player.instrument as PlayableInstrumentId].includes(next));
+    if (next === mode || !supported) return;
     setMode(next);
     sessionRef.current?.setMode(next);
     // The auto kick belongs to easy mode: restart the clock so the option takes effect.
@@ -227,7 +416,12 @@ function Stage({
   };
 
   const aspect = stats && stats.width > 0 ? `${stats.width} / ${stats.height}` : '4 / 3';
-  const hardModeAvailable = INSTRUMENT_MODES[instrument].includes('hard');
+  const visiblePlayers = players.slice(0, playerCount);
+  const assignedPlayers = visiblePlayers.filter((player) => player.instrument !== 'none');
+  const hardModeAvailable = assignedPlayers.every((player) =>
+    INSTRUMENT_MODES[player.instrument as PlayableInstrumentId].includes('hard'),
+  );
+  const singerId = visiblePlayers.findIndex((player) => player.vocals);
   const songInfo = sessionInfo?.song;
   const singerInfo = sessionInfo?.singer;
   const songProgress =
@@ -238,6 +432,7 @@ function Stage({
       : 0;
 
   const live = active && phase === 'running';
+  const showPlayerSetup = !active || editingPlayers;
   const status = !live
     ? { tone: 'wait', label: active ? PHASE_TEXT[phase] || 'Starting…' : 'Camera off' }
     : paused
@@ -251,30 +446,19 @@ function Stage({
       <div className="console">
         <div className="console__bar">
           <div className="control-section">
-            <span className="control-label">Instrument</span>
-            <div className="instrument-picker" role="radiogroup" aria-label="Instrument">
-              {INSTRUMENT_IDS.map((id) => {
-                const item = INSTRUMENT_LABELS[id];
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    className="instrument-option"
-                    data-instrument={id}
-                    aria-checked={instrument === id}
-                    role="radio"
-                    disabled={!live}
-                    onClick={() => applyInstrument(id)}
-                    title={item.hint}
-                  >
-                    <span className="instrument-option__mark" aria-hidden="true">
-                      {item.mark}
-                    </span>
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
+            <span className="control-label">Band</span>
+            <div className="band-summary">
+              {visiblePlayers.map((player, playerId) => (
+                <div key={playerId}>
+                  <span>P{playerId + 1}</span>
+                  <strong>{instrumentLabel(player.instrument)}</strong>
+                  {player.vocals && <small>+ vocals</small>}
+                </div>
+              ))}
             </div>
+            <button className="btn band-summary__edit" type="button" disabled={!live} onClick={() => setEditingPlayers(true)}>
+              Edit players
+            </button>
           </div>
 
           <div className="control-section">
@@ -300,7 +484,7 @@ function Stage({
               </button>
             </div>
             <span className="control-note">
-              {instrument === 'guitar'
+              {assignedPlayers.some((player) => player.instrument === 'guitar')
                 ? 'The song chooses the chord. You bring the rhythm.'
                 : mode === 'easy'
                   ? 'The song keeps every move musical.'
@@ -362,6 +546,40 @@ function Stage({
         <div className="stage" style={{ aspectRatio: aspect }}>
           <video ref={videoRef} className="stage__video" />
           <canvas ref={canvasRef} className="stage__canvas" />
+          {live && !showPlayerSetup && (
+            <>
+              {playerCount === 2 && <div className="stage__split-guide" aria-hidden="true" />}
+              <div className="player-badges" data-count={playerCount}>
+                {visiblePlayers.map((player, playerId) => {
+                  const hands = sessionInfo?.players[playerId]?.hands ?? 0;
+                  const ready = player.instrument === 'none' ? player.vocals : hands > 0;
+                  return (
+                    <div
+                      className="player-badge"
+                      data-player={playerId + 1}
+                      data-ready={ready ? '' : undefined}
+                      data-vocals={player.vocals ? '' : undefined}
+                      key={playerId}
+                    >
+                      <span>P{playerId + 1}</span>
+                      <div>
+                        <strong>{instrumentLabel(player.instrument)}</strong>
+                        <small>
+                          {ready
+                            ? player.instrument === 'none'
+                              ? 'Ready'
+                              : `${hands} ${hands === 1 ? 'hand' : 'hands'} ready`
+                            : 'Waiting for hands'}
+                          {player.vocals && player.instrument !== 'none' ? ' · vocals' : ''}
+                        </small>
+                      </div>
+                      <i aria-hidden="true" />
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
           {live && (
             <div className="karaoke-hud" aria-live="polite">
               <div className="karaoke-hud__song">
@@ -399,13 +617,40 @@ function Stage({
               <strong>{Math.max(1, songInfo.countIn.beats - songInfo.countIn.beat)}</strong>
             </div>
           )}
-          {!active ? (
-            <div className="stage__welcome">
-              <p className="stage__kicker">Acapella is way overrated</p>
-              <h2>Ready to band together?</h2>
-              <button className="stage__start" onClick={onStart}>
-                <span aria-hidden="true">▶</span> Start band
-              </button>
+          {showPlayerSetup ? (
+            <div className="player-setup" data-editing={active ? '' : undefined}>
+              <div className="player-setup__head">
+                <div>
+                  <p className="stage__kicker">{active ? 'Band setup' : 'Acapella is way overrated'}</p>
+                  <h2>{active ? 'Edit your players' : 'Who’s playing?'}</h2>
+                </div>
+                <div className="player-count" role="group" aria-label="Number of players">
+                  <button type="button" aria-pressed={playerCount === 1} onClick={() => setPlayerCount(1)}>
+                    One player
+                  </button>
+                  <button type="button" aria-pressed={playerCount === 2} onClick={() => setPlayerCount(2)}>
+                    Two players
+                  </button>
+                </div>
+              </div>
+              <div className="player-setup__cards" data-count={playerCount}>
+                {visiblePlayers.map((player, playerId) => (
+                  <PlayerCard
+                    key={playerId}
+                    playerId={playerId as 0 | 1}
+                    setup={player}
+                    live={live}
+                    hands={sessionInfo?.players[playerId]?.hands ?? 0}
+                    onInstrument={(instrument) => updatePlayerInstrument(playerId as 0 | 1, instrument)}
+                    onVocals={() => togglePlayerVocals(playerId as 0 | 1)}
+                  />
+                ))}
+              </div>
+              <div className="player-setup__actions">
+                <button className="stage__start" type="button" onClick={active ? applyPlayerSetup : startBand}>
+                  <span aria-hidden="true">{active ? '✓' : '▶'}</span> {active ? 'Done' : 'Start band'}
+                </button>
+              </div>
             </div>
           ) : phase !== 'running' ? (
             <div className="stage__status">
@@ -421,9 +666,12 @@ function Stage({
               <i />
               {status.label}
             </span>
-            <span className="instrument-chip" data-instrument={instrument}>
-              {INSTRUMENT_LABELS[instrument].label} · {mode}
-            </span>
+            {visiblePlayers.map((player, playerId) => (
+              <span className="instrument-chip" data-player={playerId + 1} key={playerId}>
+                P{playerId + 1} · {instrumentLabel(player.instrument)}
+              </span>
+            ))}
+            <span className="instrument-chip">{mode}</span>
             <button
               type="button"
               className="backing-toggle backing-toggle--compact"
@@ -493,7 +741,10 @@ function Stage({
           <div>
             <span className="control-label">Optional layer</span>
             <h2 id="singer-title">Vocals</h2>
-            <p>Sing while you play any instrument. Use wired headphones to avoid feedback.</p>
+            <p>
+              {singerId >= 0 ? `Assigned to Player ${singerId + 1}. ` : 'Assign vocals from Edit Players. '}
+              Use wired headphones to avoid feedback.
+            </p>
           </div>
         </div>
 
@@ -502,7 +753,7 @@ function Stage({
             type="button"
             className="mic-button"
             data-enabled={singerInfo?.enabled ? '' : undefined}
-            disabled={!live || micPending || singerInfo?.available === false}
+            disabled={!live || singerId < 0 || micPending || singerInfo?.available === false}
             onClick={() => void toggleSinger()}
           >
             <span className="mic-button__dot" aria-hidden="true" />
@@ -558,7 +809,13 @@ function Stage({
           <i />
           <span>
             {singerInfo?.error ??
-              (singerInfo?.enabled ? 'Mic is live through the band mix' : live ? 'Vocals are off' : 'Start Band to enable vocals')}
+              (singerInfo?.enabled
+                ? `Player ${singerId + 1} mic is live through the band mix`
+                : !live
+                  ? 'Start Band to enable vocals'
+                  : singerId < 0
+                    ? 'No singer assigned'
+                    : `Player ${singerId + 1} has vocals · microphone is off`)}
           </span>
         </div>
       </section>
