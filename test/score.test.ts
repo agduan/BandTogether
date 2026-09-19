@@ -99,11 +99,11 @@ describe('ScoreKeeper', () => {
       miss: 0,
       last: 'good',
       lastOffsetMs: 90,
-      tightness: 1,
+      tightness: 0.75, // a good counts half
     });
     k.add(MISS);
     expect(k.info()).toMatchObject({ points: 150, combo: 0, bestCombo: 2, miss: 1, last: 'miss', lastOffsetMs: 180 });
-    expect(k.info().tightness).toBeCloseTo(2 / 3);
+    expect(k.info().tightness).toBeCloseTo(1.5 / 3);
   });
 
   it('pays a multiplier for a long combo, capped', () => {
@@ -125,7 +125,21 @@ describe('ScoreKeeper', () => {
     expect(k.info().tightness).toBe(0.5);
     k.add(GOOD);
     k.add(GOOD);
+    expect(k.info().tightness).toBe(0.75); // perfect, perfect, good, good
+    for (let i = 0; i < 4; i++) k.add(PERFECT);
     expect(k.info().tightness).toBe(1);
+  });
+
+  it('random flailing reads clearly looser than steady playing', () => {
+    // Offsets spread evenly across the 250 ms gap between eighths at 120 bpm.
+    const flail = new ScoreKeeper({ ...cfg(), window: 1000 });
+    for (let i = 0; i < 1000; i++) flail.add(judge(i * 0.25, 0, 500, 2, 60, 130));
+    expect(flail.info().tightness).toBeGreaterThan(0.5);
+    expect(flail.info().tightness).toBeLessThan(0.6);
+    // A steady player, ±35 ms around the grid.
+    const steady = new ScoreKeeper({ ...cfg(), window: 1000 });
+    for (let i = 0; i < 1000; i++) steady.add(judge((i % 71) - 35, 0, 500, 2, 60, 130));
+    expect(steady.info().tightness).toBe(1);
   });
 
   it('info() is a snapshot and reset() starts over', () => {

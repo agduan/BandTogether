@@ -69,19 +69,28 @@ export function comboMultiplier(combo: number): number {
   return Math.min(MAX_MULTIPLIER, 1 + Math.floor(combo / COMBO_STEP));
 }
 
-/** Newest-last window of on-beat flags, each tagged with the player who made it. */
-class OnBeatWindow {
-  private entries: { playerId: PlayerId; onBeat: boolean }[] = [];
+/**
+ * What one event is worth to the tightness meter. A "good" counts half: the
+ * windows are generous so beginners keep scoring, which lets random flailing
+ * land on-beat about 70% of the time; weighting pulls that down to about 0.55
+ * while tight playing still reads near 1.
+ */
+export const TIGHTNESS_WEIGHT: Record<Judgement, number> = { perfect: 1, good: 0.5, miss: 0 };
 
-  push(onBeat: boolean, size: number, playerId: PlayerId = 0): void {
-    this.entries.push({ playerId, onBeat });
+/** Newest-last window of judgements, each tagged with the player who made it. */
+class TightnessWindow {
+  private entries: { playerId: PlayerId; weight: number }[] = [];
+
+  push(judgement: Judgement, size: number, playerId: PlayerId = 0): void {
+    this.entries.push({ playerId, weight: TIGHTNESS_WEIGHT[judgement] });
     const max = Math.max(1, Math.round(size));
     if (this.entries.length > max) this.entries.splice(0, this.entries.length - max);
   }
 
-  get fraction(): number {
+  /** Mean weight over the window, 0..1; 0 when empty. */
+  get value(): number {
     if (this.entries.length === 0) return 0;
-    return this.entries.filter((e) => e.onBeat).length / this.entries.length;
+    return this.entries.reduce((sum, e) => sum + e.weight, 0) / this.entries.length;
   }
 
   /** Forget one player's events. */
@@ -97,7 +106,7 @@ class OnBeatWindow {
 /** One player's running score. */
 export class ScoreKeeper {
   private score: ScoreInfo = { ...EMPTY_SCORE };
-  private readonly recent = new OnBeatWindow();
+  private readonly recent = new TightnessWindow();
 
   constructor(private readonly cfg: ScoreConfig) {}
 
@@ -115,8 +124,8 @@ export class ScoreKeeper {
     s[j.judgement] += 1;
     s.last = j.judgement;
     s.lastOffsetMs = j.offsetMs;
-    this.recent.push(onBeat, this.cfg.window);
-    s.tightness = this.recent.fraction;
+    this.recent.push(j.judgement, this.cfg.window);
+    s.tightness = this.recent.value;
   }
 
   info(): ScoreInfo {
@@ -143,7 +152,7 @@ export function isScoredEvent(e: InstrumentEvent, instrument: InstrumentId): boo
 /** Every player's keeper plus the shared tightness meter. */
 export class BandScore {
   private readonly keepers = new Map<PlayerId, ScoreKeeper>();
-  private readonly recent = new OnBeatWindow();
+  private readonly recent = new TightnessWindow();
 
   constructor(
     private readonly cfg: ScoreConfig,
@@ -157,7 +166,7 @@ export class BandScore {
     let keeper = this.keepers.get(playerId);
     if (!keeper) this.keepers.set(playerId, (keeper = new ScoreKeeper(this.cfg)));
     keeper.add(j);
-    this.recent.push(j.judgement !== 'miss', this.cfg.window, playerId);
+    this.recent.push(j.judgement, this.cfg.window, playerId);
     return j;
   }
 
@@ -165,9 +174,9 @@ export class BandScore {
     return this.keepers.get(playerId)?.info() ?? { ...EMPTY_SCORE };
   }
 
-  /** On-beat fraction over the last `window` events from anyone. */
+  /** Timing quality over the last `window` events from anyone, 0..1 (see TIGHTNESS_WEIGHT). */
   get tightness(): number {
-    return this.recent.fraction;
+    return this.recent.value;
   }
 
   reset(): void {
