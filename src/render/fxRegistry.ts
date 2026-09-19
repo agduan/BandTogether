@@ -1,7 +1,7 @@
 import type { Config } from '@/app/config';
 import type { InstrumentId, OverlayLayer, PlayerId } from '@/core/types';
 import type { InstrumentView } from '@/core/views';
-import { DrumsFx } from './fx';
+import { DrumsFx, GuitarFx } from './fx';
 
 /** An overlay that may hold bus subscriptions; `dispose` is called when the instrument is swapped out. */
 export type FxLayer = OverlayLayer & { dispose?(): void };
@@ -15,10 +15,11 @@ export type FxLayer = OverlayLayer & { dispose?(): void };
  * it inside `draw`. It returns the variant matching `id`, or null early on.
  */
 export function createFx(id: InstrumentId, config: Config, playerId: PlayerId, view: () => InstrumentView | null): FxLayer | null {
-  void view;
   switch (id) {
     case 'drums':
       return new DrumsFx(config, playerId);
+    case 'guitar':
+      return new GuitarFx(playerId, view);
     default:
       return null;
   }

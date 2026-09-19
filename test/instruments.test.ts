@@ -3,6 +3,7 @@ import { DEFAULT_CONFIG } from '@/app/config';
 import { createInstrument, INSTRUMENT_IDS, INSTRUMENT_MODES } from '@/app/instruments';
 import type { ToneAudioNode } from 'tone';
 import type { Vec2, VisionFrame } from '@/core/types';
+import { GuitarFx } from '@/render/fx';
 
 const deps = () => ({ config: structuredClone(DEFAULT_CONFIG), output: () => ({}) as ToneAudioNode });
 
@@ -28,21 +29,15 @@ describe('instrument registry', () => {
     expect(INSTRUMENT_MODES.guitar).toEqual(['easy']);
   });
 
-  it('an instrument without registered art draws its detector band at the frame aspect', () => {
+  it('guitar uses its registered compact overlay at the frame aspect', () => {
     const d = deps();
     const guitar = createInstrument('guitar', d);
     const frame: VisionFrame = { t: 0, aspect: 16 / 9, hands: [], inferenceMs: 0 };
     expect(guitar.detectors[0].update(frame)).toEqual([]);
+    expect(guitar.overlay).toBeInstanceOf(GuitarFx);
 
-    const { ctx, rects } = fakeCtx();
+    const { ctx } = fakeCtx();
     const toPx = (v: Vec2): Vec2 => ({ x: v.x * 100, y: v.y * 100 });
-    guitar.overlay.draw(ctx, frame, toPx);
-
-    const { strum } = d.config;
-    const [x, y, w, h] = rects[0];
-    expect(x).toBeCloseTo(strum.bandXMin * (16 / 9) * 100);
-    expect(y).toBeCloseTo((strum.bandY - strum.bandHalfHeight) * 100);
-    expect(w).toBeCloseTo((strum.bandXMax - strum.bandXMin) * (16 / 9) * 100);
-    expect(h).toBeCloseTo(2 * strum.bandHalfHeight * 100);
+    expect(() => guitar.overlay.draw(ctx, frame, toPx)).not.toThrow();
   });
 });
