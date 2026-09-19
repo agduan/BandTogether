@@ -125,6 +125,16 @@ describe('Session seams', () => {
     s.resetScore();
     expect(s.info().players[0].score.points).toBe(0);
     expect(s.info().band.tightness).toBe(0);
+
+    // A new instrument starts from zero; picking the same one again changes nothing.
+    hit();
+    s.setInstrument('drums');
+    expect(s.info().players[0].score.perfect).toBe(0);
+    expect(s.info().players[0].score.miss).toBe(1);
+    s.setInstrument('guitar');
+    expect(s.info().players[0].score).toMatchObject({ points: 0, miss: 0, last: null });
+    expect(s.info().band.tightness).toBe(0);
+    s.setInstrument('drums');
     s.stop();
     hit(); // a stopped session no longer listens
     expect(s.info().players[0].score.miss).toBe(0);

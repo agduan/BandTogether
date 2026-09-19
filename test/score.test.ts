@@ -157,6 +157,21 @@ describe('BandScore', () => {
     expect(band.tightness).toBe(0);
   });
 
+  it('resetPlayer zeroes one player and their share of the band tightness', () => {
+    let phase = 0;
+    const band = new BandScore(cfg(), () => songAt(phase));
+    band.hit(0);
+    phase = 0.25;
+    band.hit(1);
+    expect(band.tightness).toBe(0.5);
+    band.resetPlayer(1);
+    expect(band.info(1)).toMatchObject({ points: 0, miss: 0, last: null });
+    expect(band.info(0).perfect).toBe(1);
+    expect(band.tightness).toBe(1);
+    band.resetPlayer(0);
+    expect(band.tightness).toBe(0);
+  });
+
   it('changes nothing in free play', () => {
     const band = new BandScore(cfg(), () => FREEPLAY_CONTEXT);
     expect(band.hit(0)).toBeNull();

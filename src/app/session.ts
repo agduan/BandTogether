@@ -121,6 +121,7 @@ export class Session {
     old.dispose();
     this.audio.removeVoice(old.instrument.voice);
     this.players[playerId] = next;
+    this.score.resetPlayer(playerId); // a new instrument starts from zero
     // The auto kick plays through a drummer's voice: follow the swap.
     if (this.songClock) this.songClock.opts.kickVoice = this.drumsVoice();
   }
@@ -168,7 +169,7 @@ export class Session {
     if (instrument && isScoredEvent(e, instrument)) this.score.hit(e.playerId);
   }
 
-  /** Zero every player's score and the tightness meter. `startSong` does this too. */
+  /** Zero every player's score and the tightness meter. `startSong` does this too; `setInstrument` zeroes that player. */
   resetScore(): void {
     this.score.reset();
   }

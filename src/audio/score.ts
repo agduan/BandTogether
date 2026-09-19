@@ -69,23 +69,28 @@ export function comboMultiplier(combo: number): number {
   return Math.min(MAX_MULTIPLIER, 1 + Math.floor(combo / COMBO_STEP));
 }
 
-/** Newest-last window of on-beat flags. */
+/** Newest-last window of on-beat flags, each tagged with the player who made it. */
 class OnBeatWindow {
-  private readonly flags: boolean[] = [];
+  private entries: { playerId: PlayerId; onBeat: boolean }[] = [];
 
-  push(onBeat: boolean, size: number): void {
-    this.flags.push(onBeat);
+  push(onBeat: boolean, size: number, playerId: PlayerId = 0): void {
+    this.entries.push({ playerId, onBeat });
     const max = Math.max(1, Math.round(size));
-    if (this.flags.length > max) this.flags.splice(0, this.flags.length - max);
+    if (this.entries.length > max) this.entries.splice(0, this.entries.length - max);
   }
 
   get fraction(): number {
-    if (this.flags.length === 0) return 0;
-    return this.flags.filter(Boolean).length / this.flags.length;
+    if (this.entries.length === 0) return 0;
+    return this.entries.filter((e) => e.onBeat).length / this.entries.length;
+  }
+
+  /** Forget one player's events. */
+  drop(playerId: PlayerId): void {
+    this.entries = this.entries.filter((e) => e.playerId !== playerId);
   }
 
   clear(): void {
-    this.flags.length = 0;
+    this.entries.length = 0;
   }
 }
 
@@ -152,7 +157,7 @@ export class BandScore {
     let keeper = this.keepers.get(playerId);
     if (!keeper) this.keepers.set(playerId, (keeper = new ScoreKeeper(this.cfg)));
     keeper.add(j);
-    this.recent.push(j.judgement !== 'miss', this.cfg.window);
+    this.recent.push(j.judgement !== 'miss', this.cfg.window, playerId);
     return j;
   }
 
@@ -168,5 +173,11 @@ export class BandScore {
   reset(): void {
     this.keepers.clear();
     this.recent.clear();
+  }
+
+  /** Zero one player (they swapped instruments); everyone else keeps their score and their share of the tightness. */
+  resetPlayer(playerId: PlayerId): void {
+    this.keepers.delete(playerId);
+    this.recent.drop(playerId);
   }
 }
