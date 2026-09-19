@@ -108,6 +108,49 @@ export interface Config {
     /** Skip the Start button and open the camera on load (kiosk/demo and headless checks). */
     autostart: boolean;
   };
+  bass: {
+    hyst: number;
+    vMin: number;
+    vMax: number;
+    floor: number;
+    refractorySameMs: number;
+    refractoryOppositeMs: number;
+    /** Pluck band, as fractions of the frame (same convention as `strum`). */
+    bandY: number;
+    bandHalfHeight: number;
+    bandXMin: number;
+    bandXMax: number;
+    /** Hard mode: the neck runs from the band's left edge to (neckX, neckY), in `bins` pitch bins. */
+    neckX: number;
+    neckY: number;
+    bins: number;
+  };
+  singer: {
+    /** Open the mic as soon as the session starts. */
+    enabled: boolean;
+    gain: number;
+    /** Wet amounts, 0..1. */
+    echo: number;
+    reverb: number;
+  };
+  backing: {
+    enabled: boolean;
+    /** dB */
+    volume: number;
+  };
+  score: {
+    /** Grid lines per beat that count as on-beat (2 = eighths). */
+    subdivision: number;
+    perfectMs: number;
+    goodMs: number;
+    /** Events in the tightness window. */
+    window: number;
+  };
+  players: {
+    count: number;
+    /** Half-width of the no-man's-land between the two screen halves, fraction of the width. */
+    deadZone: number;
+  };
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -163,6 +206,25 @@ export const DEFAULT_CONFIG: Config = {
   audio: { lookAhead: 0.01, latencyHint: 'interactive' },
   play: { mode: 'easy', song: 'saints', click: true, autoKick: true, autostartSong: false },
   debug: { panel: false, skeleton: true, latencyMeter: false, autostart: false },
+  bass: {
+    hyst: 0.02,
+    vMin: 0.5,
+    vMax: 3.0,
+    floor: 0.35,
+    refractorySameMs: 60,
+    refractoryOppositeMs: 40,
+    bandY: 0.62,
+    bandHalfHeight: 0.05,
+    bandXMin: 0.53,
+    bandXMax: 0.81,
+    neckX: 0.12,
+    neckY: 0.42,
+    bins: 6,
+  },
+  singer: { enabled: false, gain: 1, echo: 0.25, reverb: 0.3 },
+  backing: { enabled: true, volume: -10 },
+  score: { subdivision: 2, perfectMs: 60, goodMs: 130, window: 16 },
+  players: { count: 1, deadZone: 0.05 },
 };
 
 /** Parse `?a.b=1&c=true` into a flat map of dotted paths to raw strings. */

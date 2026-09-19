@@ -1,4 +1,4 @@
-import type { DrumHitEvent, NoteResolver, PlayMode, PressEvent, SongContext, StrumEvent } from '@/core/types';
+import type { BassPluckEvent, DrumHitEvent, NoteResolver, PlayMode, PressEvent, SongContext, StrumEvent } from '@/core/types';
 import { grooveRole } from './groove';
 
 /**
@@ -10,10 +10,21 @@ import { grooveRole } from './groove';
 /** Song context when no song clock is running: free play, no chart. */
 export const FREEPLAY_CONTEXT: SongContext = { bpm: 0, beatsPerBar: 4, bar: 0, beat: 0, beatPhase: 0, chord: null, key: 'G' };
 
+type Notes = { notes: (string | null)[]; velocities: number[] };
+const SILENT: Notes = { notes: [], velocities: [] };
+
+/**
+ * Guitar is easy only (there is no chord classifier): both modes strum the
+ * chart chord, so the guitar never goes silent if the toggle is left on hard.
+ * Voicings arrive with the guitar voice (row 11); until then a strum is silent.
+ */
+function chartStrum(_e: StrumEvent, _song: SongContext): Notes {
+  return SILENT;
+}
+
 /**
  * Hard mode: what you did is what you hear. Drums play the pad that was struck
- * at the struck velocity. Strums (commit 16) play the classified chord;
- * presses (commit 25) play the key under the finger.
+ * at the struck velocity; the bass plays the neck bin under the fret hand (K5).
  */
 export class HardMode implements NoteResolver {
   readonly id: PlayMode = 'hard';
@@ -22,14 +33,17 @@ export class HardMode implements NoteResolver {
     return { sample: e.pad, velocity: e.velocity };
   }
 
-  resolveStrum(e: StrumEvent, _song: SongContext): { notes: (string | null)[]; velocities: number[] } {
-    // Voicings arrive with the guitar voice (commit 11); until then a strum is silent.
-    void e;
-    return { notes: [], velocities: [] };
+  resolveStrum(e: StrumEvent, song: SongContext): Notes {
+    return chartStrum(e, song);
   }
 
   resolvePress(e: PressEvent, _song: SongContext): { note: string; velocity: number } {
     return { note: 'C4', velocity: e.velocity };
+  }
+
+  resolveBass(_e: BassPluckEvent, _song: SongContext): Notes {
+    // Pitch from `pitchBin` arrives with the bass voice (K5).
+    return SILENT;
   }
 }
 
@@ -49,14 +63,17 @@ export class EasyMode implements NoteResolver {
     return { sample: grooveRole(song.beat + song.beatPhase, song.beatsPerBar, song.bar), velocity: e.velocity };
   }
 
-  resolveStrum(e: StrumEvent, _song: SongContext): { notes: (string | null)[]; velocities: number[] } {
-    // Chord from the chart → voicing arrives with the guitar voice (commit 11).
-    void e;
-    return { notes: [], velocities: [] };
+  resolveStrum(e: StrumEvent, song: SongContext): Notes {
+    return chartStrum(e, song);
   }
 
   resolvePress(e: PressEvent, _song: SongContext): { note: string; velocity: number } {
     return { note: 'C4', velocity: e.velocity };
+  }
+
+  resolveBass(_e: BassPluckEvent, _song: SongContext): Notes {
+    // Root of the chart chord arrives with the bass voice (K5).
+    return SILENT;
   }
 }
 

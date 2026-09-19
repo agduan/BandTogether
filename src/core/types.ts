@@ -13,6 +13,8 @@
  * - MediaPipe's handedness label is a PRIOR only; roles come from geometry.
  */
 
+import type { InstrumentView } from './views';
+
 export type Vec2 = { x: number; y: number };
 export type Vec3 = { x: number; y: number; z: number };
 
@@ -148,7 +150,19 @@ export interface ReleaseEvent {
   finger: number;
 }
 
-export type InstrumentEvent = DrumHitEvent | StrumEvent | ChordEvent | PressEvent | ReleaseEvent;
+/** One plucked bass note. The bass is a one-string guitar: same stroke, one pitch. */
+export interface BassPluckEvent {
+  type: 'bass.pluck';
+  t: number;
+  playerId: PlayerId;
+  direction: StrumDirection;
+  /** 0..1 */
+  velocity: number;
+  /** Hard mode: neck bin under the fret hand (0 = nut). null = no fret hand / easy mode. */
+  pitchBin: number | null;
+}
+
+export type InstrumentEvent = DrumHitEvent | StrumEvent | ChordEvent | PressEvent | ReleaseEvent | BassPluckEvent;
 
 /** Non-instrument events that also travel on the bus. */
 export interface VisionFrameEvent {
@@ -176,7 +190,15 @@ export interface AudioPlayedEvent {
   source: InstrumentEvent['type'];
 }
 
-export type AppEvent = InstrumentEvent | VisionFrameEvent | BeatEvent | AudioPlayedEvent;
+/** A short message for the player (calibrated, mic denied, ...). The UI decides how to show it. */
+export interface UiToastEvent {
+  type: 'ui.toast';
+  t: number;
+  text: string;
+  kind?: 'info' | 'success' | 'warn' | 'error';
+}
+
+export type AppEvent = InstrumentEvent | VisionFrameEvent | BeatEvent | AudioPlayedEvent | UiToastEvent;
 export type AppEventType = AppEvent['type'];
 
 // ---------------------------------------------------------------------------
@@ -211,9 +233,10 @@ export interface NoteResolver {
   resolveStrum(e: StrumEvent, song: SongContext): { notes: (string | null)[]; velocities: number[] };
   resolveDrum(e: DrumHitEvent, song: SongContext): { sample: string; velocity: number };
   resolvePress(e: PressEvent, song: SongContext): { note: string; velocity: number };
+  resolveBass(e: BassPluckEvent, song: SongContext): { notes: (string | null)[]; velocities: number[] };
 }
 
-export type InstrumentId = 'guitar' | 'drums' | 'keyboard';
+export type InstrumentId = 'guitar' | 'drums' | 'keyboard' | 'bass';
 export type PlayMode = 'easy' | 'hard';
 
 /** A screen-space region (h-units) an instrument draws and reasons about. */
@@ -244,6 +267,11 @@ export interface Instrument {
   voice: Voice;
   zones: Zone[];
   overlay: OverlayLayer;
+  /** Live geometry and state for the overlays and `session.info()` (see core/views.ts). */
+  view?(): InstrumentView | null;
+  /** Snap the instrument to where the player is right now. Returns false if it could not (no hands). */
+  calibrate?(frame: VisionFrame): boolean;
+  resetCalibration?(): void;
   /** Release bus subscriptions and other resources. */
   dispose?(): void;
 }

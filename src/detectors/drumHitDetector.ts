@@ -1,5 +1,6 @@
 import type { Config } from '@/app/config';
 import { LM, type Detector, type DrumHitEvent, type HandFrame, type PadId, type Vec2, type VisionFrame, type Zone } from '@/core/types';
+import type { PadGeometry } from '@/core/views';
 import { VelocityBuffer } from '@/vision/filters';
 import { CrossingDetector, type CrossingOptions } from './crossingCore';
 import { speedToIntensity } from './detector';
@@ -29,13 +30,8 @@ export function trackedPoint(hand: HandFrame, drum: Config['drum']): Vec2 {
   return drum.trackedPoint === 'palm' ? hand.palm : stickTip(hand.raw, hand.palm, hand.palmSize, drum.stickLen);
 }
 
-/** Pad geometry in display space for a given aspect. */
-export interface PadGeometry {
-  id: PadId;
-  x0: number;
-  x1: number;
-  y: number;
-}
+/** Pad geometry in display space for a given aspect (defined in core/views.ts). */
+export type { PadGeometry };
 
 export function kitGeometry(drum: Config['drum'], aspect: number): PadGeometry[] {
   return Object.entries(drum.kit).map(([id, p]) => ({ id, x0: p.x0 * aspect, x1: p.x1 * aspect, y: p.y }));
@@ -137,6 +133,11 @@ export class DrumHitDetector implements Detector<DrumHitEvent> {
   reset(): void {
     this.tracks.clear();
     this.lastPadFire.clear();
+  }
+
+  /** Pads as the detector sees them right now (default 4:3 before the first frame). */
+  get geometry(): PadGeometry[] {
+    return this.pads.length > 0 ? this.pads : kitGeometry(this.config.drum, 4 / 3);
   }
 
   /** Current side of each pad core for a track, for the debug panel. */

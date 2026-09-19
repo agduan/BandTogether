@@ -23,6 +23,16 @@ export const INJECTOR_KEYS: ReadonlyArray<{ key: string; describe: string; make:
     describe: 'strum up',
     make: (t) => ({ type: 'guitar.strum', t, playerId: 0, direction: 'up', velocity: 0.6, chord: null, chordConfidence: 0 }),
   },
+  {
+    key: 'n',
+    describe: 'bass down',
+    make: (t) => ({ type: 'bass.pluck', t, playerId: 0, direction: 'down', velocity: 0.8, pitchBin: null }),
+  },
+  {
+    key: 'm',
+    describe: 'bass up',
+    make: (t) => ({ type: 'bass.pluck', t, playerId: 0, direction: 'up', velocity: 0.6, pitchBin: null }),
+  },
 ];
 
 /** Returns true if the key was consumed. */
