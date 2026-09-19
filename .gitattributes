@@ -1,0 +1,4 @@
+# Vendored runtime assets: treat as binary so git never diffs or re-encodes them.
+*.wasm binary
+*.task binary
+*.mp3 binary

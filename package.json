@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "vendor": "bash scripts/vendor-assets.sh"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "1.0.1",

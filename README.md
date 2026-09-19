@@ -20,6 +20,8 @@ npm run build      # typecheck + production build
 
 Tunable thresholds can be overridden from the URL without a rebuild, e.g. `http://localhost:5173/?drum.vMin=1.4&debug.panel=true`. See `src/app/config.ts` for every key.
 
+The MediaPipe WASM runtime, the hand-landmark model and all audio samples are committed under `public/` so the app runs with no network access. `npm run vendor` re-fetches them (sources and licenses in `public/samples/LICENSES.md`).
+
 ## Layout
 
 ```
