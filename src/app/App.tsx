@@ -16,11 +16,6 @@ const PHASE_TEXT: Record<SessionPhase, string> = {
   error: 'Something went wrong',
 };
 
-/**
- * Product chrome: Start Band landing page, then the camera stage with the
- * skeleton overlay and a small stats line. Instrument pickers arrive in
- * commit 17; the debug panel in commit 5.
- */
 export function App() {
   const config = useMemo(() => loadConfig(), []);
   const [started, setStarted] = useState(config.debug.autostart);
@@ -28,27 +23,29 @@ export function App() {
   return (
     <main className="app">
       <header className="app__header">
-        <h1>Air Band</h1>
-        <p className="app__tagline">Play guitar and drums in the air. No instrument, no lessons.</p>
+        <div>
+          <p className="app__eyebrow">A tiny webcam band</p>
+          <h1 className="app__wordmark">
+            Band Together<span aria-hidden="true">.</span>
+          </h1>
+        </div>
+        <p className="app__tagline">Move like you mean it. We’ll handle the instruments.</p>
       </header>
 
-      {!started ? (
-        <button className="app__start" onClick={() => setStarted(true)}>
-          Start Band
-        </button>
-      ) : (
-        <Stage config={config} />
-      )}
-
-      <details className="app__config">
-        <summary>Config (override with URL params, e.g. <code>?drum.vMin=1.4</code>)</summary>
-        <pre>{JSON.stringify(config, null, 2)}</pre>
-      </details>
+      <Stage config={config} active={started} onStart={() => setStarted(true)} />
     </main>
   );
 }
 
-function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
+function Stage({
+  config,
+  active,
+  onStart,
+}: {
+  config: ReturnType<typeof loadConfig>;
+  active: boolean;
+  onStart: () => void;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sessionRef = useRef<Session | null>(null);
@@ -82,6 +79,8 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
   }, []);
 
   useEffect(() => {
+    if (!active) return;
+
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
@@ -114,15 +113,15 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
       sessionRef.current = null;
       setSession(null);
     };
-  }, [config]);
+  }, [active, config]);
 
   const onPickCamera = async (id: string) => {
     setDeviceId(id);
     await sessionRef.current?.switchCamera(id);
   };
 
-  const toggleMode = () => {
-    const next: PlayMode = mode === 'easy' ? 'hard' : 'easy';
+  const applyMode = (next: PlayMode) => {
+    if (next === mode) return;
     setMode(next);
     sessionRef.current?.setMode(next);
     // The auto kick belongs to easy mode: restart the clock so the option takes effect.
@@ -154,81 +153,135 @@ function Stage({ config }: { config: ReturnType<typeof loadConfig> }) {
 
   const aspect = stats && stats.width > 0 ? `${stats.width} / ${stats.height}` : '4 / 3';
 
+  const live = active && phase === 'running';
+  const status = !live
+    ? { tone: 'wait', label: active ? PHASE_TEXT[phase] || 'Starting…' : 'Camera off' }
+    : paused
+      ? { tone: 'paused', label: 'Paused' }
+      : songRunning
+        ? { tone: 'live', label: 'Playing' }
+        : { tone: 'idle', label: 'Ready' };
+
   return (
     <section className="stage-wrap">
-      <div className="stage" style={{ aspectRatio: aspect }}>
-        <video ref={videoRef} className="stage__video" />
-        <canvas ref={canvasRef} className="stage__canvas" />
-        {phase !== 'running' && (
-          <div className="stage__status">
-            <p>{PHASE_TEXT[phase]}</p>
-            {detail && <p className="stage__detail">{detail}</p>}
+      <div className="console">
+        <div className="console__bar">
+          <div className="console__group">
+            <button
+              className={`btn ${songRunning ? '' : 'btn--primary'}`}
+              onClick={toggleSong}
+              disabled={!live}
+              title="Start or stop the song clock"
+            >
+              {songRunning ? '■ Stop' : '▶ Play'}
+            </button>
+            <button
+              className={`btn ${paused ? 'btn--paused' : ''}`}
+              onClick={togglePause}
+              disabled={!live}
+              title="Freeze the picture and stop tracking, sound and the song. Click again to carry on."
+            >
+              {paused ? '▶ Resume' : '⏸ Pause'}
+            </button>
+            <select
+              className="select"
+              value={songId}
+              onChange={(e) => pickSong(e.target.value)}
+              disabled={!live}
+              aria-label="Song"
+            >
+              {Object.entries(SONGS).map(([id, s]) => (
+                <option key={id} value={id}>
+                  {s.title} · {s.bpm} bpm
+                </option>
+              ))}
+            </select>
           </div>
-        )}
-      </div>
 
-      <div className="stage__bar">
-        <span className="stage__stats">
-          {stats && phase === 'running'
-            ? `${stats.fps.toFixed(0)} fps · inference ${stats.inferenceMs.toFixed(1)} ms · ` +
-              `${stats.hands} hand${stats.hands === 1 ? '' : 's'} · ${stats.delegate} · ` +
-              `${stats.width}×${stats.height} · ${stats.usingVideoFrameCallback ? 'rVFC' : 'rAF'} · ` +
-              `audio ${sessionRef.current?.audio.state ?? '-'}` +
-              (paused ? ' · PAUSED' : '')
-            : detail}
-        </span>
-        <span className="stage__controls">
-          <button
-            className={`stage__btn ${paused ? 'stage__btn--paused' : ''}`}
-            onClick={togglePause}
-            disabled={phase !== 'running'}
-            title="Freeze the picture and stop tracking, sound and the song. Click again to carry on."
-          >
-            {paused ? '▶ resume band' : '⏸ pause band'}
-          </button>
-          <button
-            className={`stage__btn ${mode === 'easy' ? 'stage__btn--easy' : 'stage__btn--hard'}`}
-            onClick={toggleMode}
-            disabled={phase !== 'running'}
-            title="Easy: the song picks the drum. Hard: the pad you hit."
-          >
-            {mode === 'easy' ? 'EASY' : 'HARD'}
-          </button>
-          <select
-            className="stage__camera"
-            value={songId}
-            onChange={(e) => pickSong(e.target.value)}
-            disabled={phase !== 'running'}
-            aria-label="Song"
-          >
-            {Object.entries(SONGS).map(([id, s]) => (
-              <option key={id} value={id}>
-                {s.title} · {s.bpm} bpm
-              </option>
-            ))}
-          </select>
-          <button className="stage__btn" onClick={toggleSong} disabled={phase !== 'running'} title="Start/stop the song clock">
-            {songRunning ? '■ stop' : '▶ play'}
-          </button>
-          <span className="stage__hint">space = kick</span>
-        </span>
-        <button className="stage__debug-toggle" onClick={() => setShowDebug((v) => !v)} title="Toggle debug panel (`)">
-          debug
-        </button>
-        {cameras.length > 1 && (
-          <select
-            className="stage__camera"
-            value={deviceId}
-            onChange={(e) => void onPickCamera(e.target.value)}
-            aria-label="Camera"
-          >
-            {cameras.map((c) => (
-              <option key={c.deviceId} value={c.deviceId}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        )}
+          <div className="segmented" data-mode={mode} role="group" aria-label="Difficulty">
+            <button
+              type="button"
+              onClick={() => applyMode('easy')}
+              disabled={!live}
+              aria-pressed={mode === 'easy'}
+              title="Easy: the song picks the drum for you."
+            >
+              Easy
+            </button>
+            <button
+              type="button"
+              onClick={() => applyMode('hard')}
+              disabled={!live}
+              aria-pressed={mode === 'hard'}
+              title="Hard: you play the pad you actually hit."
+            >
+              Hard
+            </button>
+          </div>
+        </div>
+
+        <div className="stage" style={{ aspectRatio: aspect }}>
+          <video ref={videoRef} className="stage__video" />
+          <canvas ref={canvasRef} className="stage__canvas" />
+          {!active ? (
+            <div className="stage__welcome">
+              <p className="stage__kicker">Acapella is way overrated</p>
+              <h2>Ready to band together?</h2>
+              <button className="stage__start" onClick={onStart}>
+                <span aria-hidden="true">▶</span> Start band
+              </button>
+            </div>
+          ) : phase !== 'running' ? (
+            <div className="stage__status">
+              <p>{PHASE_TEXT[phase]}</p>
+              {detail && <p className="stage__detail">{detail}</p>}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="console__foot">
+          <div className="console__group">
+            <span className="status" data-tone={status.tone}>
+              <i />
+              {status.label}
+            </span>
+            <span className="hint">
+              <kbd>space</kbd> kick · <kbd>`</kbd> debug
+            </span>
+          </div>
+          <div className="console__group">
+            <span className="readout">
+              {stats && live
+                ? `${stats.fps.toFixed(0)} fps · ${stats.inferenceMs.toFixed(1)} ms · ` +
+                  `${stats.hands} hand${stats.hands === 1 ? '' : 's'} · ${stats.width}×${stats.height}`
+                : detail}
+            </span>
+            {cameras.length > 1 && (
+              <select
+                className="select select--sm"
+                value={deviceId}
+                onChange={(e) => void onPickCamera(e.target.value)}
+                aria-label="Camera"
+              >
+                {cameras.map((c) => (
+                  <option key={c.deviceId} value={c.deviceId}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button className="btn btn--quiet" onClick={() => setShowDebug((v) => !v)} title="Toggle debug panel (`)">
+              Debug
+            </button>
+          </div>
+          <details className="app__config">
+            <summary>Config</summary>
+            <p>
+              Override with URL params, e.g. <code>?drum.vMin=1.4</code>
+            </p>
+            <pre>{JSON.stringify(config, null, 2)}</pre>
+          </details>
+        </div>
       </div>
 
       {showDebug && session && <DebugPanel session={session} config={config} onClose={() => setShowDebug(false)} />}

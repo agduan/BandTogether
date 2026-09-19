@@ -41,10 +41,10 @@ export class Hud implements OverlayLayer {
     const badge = info.mode === 'easy' ? 'EASY' : 'HARD';
     ctx.font = `700 ${Math.round(13 * s)}px system-ui, sans-serif`;
     const bw = ctx.measureText(badge).width + 14 * s;
-    ctx.fillStyle = info.mode === 'easy' ? 'rgba(92,214,255,0.85)' : 'rgba(255,92,138,0.85)';
+    ctx.fillStyle = info.mode === 'easy' ? 'rgba(227,243,236,0.92)' : 'rgba(251,230,227,0.92)';
     roundRect(ctx, margin, margin, bw, 20 * s, 6 * s);
     ctx.fill();
-    ctx.fillStyle = '#0b0d12';
+    ctx.fillStyle = info.mode === 'easy' ? '#0f6b4c' : '#a8321f';
     ctx.fillText(badge, margin + 7 * s, margin + 4 * s);
 
     if (!info.songTitle) {

@@ -1,4 +1,4 @@
-# Air Band
+# Band Together
 
 A browser "air instrument" karaoke band for HackMIT 2026. A webcam and an on-device hand-tracking model let anyone play guitar and drums in the air, with the instruments and the song chart drawn over the live video.
 
