@@ -206,7 +206,7 @@ export const DEFAULT_CONFIG: Config = {
     useVelocityOnset: false,
   },
   audio: { lookAhead: 0.01, latencyHint: 'interactive' },
-  play: { mode: 'easy', song: 'saints', click: true, autoKick: true, autostartSong: false },
+  play: { mode: 'easy', song: 'viva-la-vida', click: true, autoKick: true, autostartSong: false },
   debug: { panel: false, skeleton: true, latencyMeter: false, autostart: false },
   bass: {
     hyst: 0.02,

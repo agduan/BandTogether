@@ -8,12 +8,12 @@ import { barCount, chordAtBar, flattenBars, parseSong } from '@/song/types';
 const ALLOWED_CHORDS = new Set(['G', 'C', 'D', 'Em', 'Am', 'A']);
 
 describe('song schema and lookups', () => {
-  it('built-in songs validate and only use chords the classifier knows', () => {
+  it('built-in songs validate and only use supported guitar voicings', () => {
     for (const song of Object.values(SONGS)) {
       expect(() => parseSong(song)).not.toThrow();
       for (const bar of flattenBars(song)) expect(ALLOWED_CHORDS.has(bar.chord)).toBe(true);
     }
-    expect(getSong('nope').title).toBe(getSong('saints').title);
+    expect(getSong('nope').title).toBe(getSong('viva-la-vida').title);
   });
 
   it('rejects malformed charts', () => {
@@ -23,15 +23,15 @@ describe('song schema and lookups', () => {
   });
 
   it('flattens sections in order and loops the chord lookup', () => {
-    const song = getSong('campfire');
+    const song = getSong('counting-stars');
     expect(barCount(song)).toBe(8);
-    expect(flattenBars(song).map((b) => b.chord)).toEqual(['G', 'D', 'Em', 'C', 'G', 'D', 'Am', 'D']);
-    expect(flattenBars(song)[4].section).toBe('turnaround');
-    expect(chordAtBar(song, 0)).toBe('G');
-    expect(chordAtBar(song, 6)).toBe('Am');
-    expect(chordAtBar(song, 8)).toBe('G'); // wraps
+    expect(flattenBars(song).map((b) => b.chord)).toEqual(['Em', 'G', 'D', 'C', 'Em', 'G', 'D', 'C']);
+    expect(flattenBars(song)[4].section).toBe('chorus');
+    expect(chordAtBar(song, 0)).toBe('Em');
+    expect(chordAtBar(song, 6)).toBe('D');
+    expect(chordAtBar(song, 8)).toBe('Em'); // wraps
     expect(chordAtBar(song, 11)).toBe('C');
-    expect(chordAtBar(song, -3)).toBe('G');
+    expect(chordAtBar(song, -3)).toBe('Em');
   });
 });
 

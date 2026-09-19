@@ -1,60 +1,48 @@
 import type { Song } from '@/core/types';
 import { parseSong } from '../types';
 
-/**
- * Built-in charts. Chords stay inside the classifier's set (G C D Em Am A);
- * lyrics are public domain only. Add a chart here or drop a JSON file into
- * public/songs/ and load it through `parseSong`.
- */
-
-const SAINTS: Song = parseSong({
-  title: 'When the Saints Go Marching In',
-  bpm: 120,
+/** Compact, lyric-free charts for the three songs offered by the product UI. */
+const VIVA_LA_VIDA: Song = parseSong({
+  title: 'Viva la Vida',
+  bpm: 138,
   key: 'G',
   timeSig: [4, 4],
   sections: [
-    {
-      name: 'verse',
-      bars: [
-        { chord: 'G', lyric: 'Oh when the saints' },
-        { chord: 'G', lyric: 'go marching in' },
-        { chord: 'G', lyric: 'oh when the saints go' },
-        { chord: 'D', lyric: 'marching in' },
-        { chord: 'G', lyric: 'oh Lord I want' },
-        { chord: 'C', lyric: 'to be in that number' },
-        { chord: 'G', lyric: 'when the saints go' },
-        { chord: 'D', lyric: 'marching' },
-        { chord: 'G', lyric: 'in' },
-        { chord: 'G' },
-        { chord: 'C' },
-        { chord: 'G' },
-        { chord: 'Em' },
-        { chord: 'Am' },
-        { chord: 'D' },
-        { chord: 'G' },
-      ],
-    },
+    { name: 'verse', bars: [{ chord: 'C' }, { chord: 'D' }, { chord: 'G' }, { chord: 'Em' }] },
+    { name: 'chorus', bars: [{ chord: 'C' }, { chord: 'D' }, { chord: 'G' }, { chord: 'Em' }] },
   ],
 });
 
-/** Original I–V–vi–IV loop in G: the "sounds like a song" fallback for free play. */
-const CAMPFIRE: Song = parseSong({
-  title: 'Campfire Loop',
-  bpm: 100,
+/** Transposed to G so every chord has an easy guitar voicing. */
+const COUNTING_STARS: Song = parseSong({
+  title: 'Counting Stars',
+  bpm: 122,
   key: 'G',
   timeSig: [4, 4],
   sections: [
-    { name: 'loop', bars: [{ chord: 'G' }, { chord: 'D' }, { chord: 'Em' }, { chord: 'C' }] },
-    { name: 'turnaround', bars: [{ chord: 'G' }, { chord: 'D' }, { chord: 'Am' }, { chord: 'D' }] },
+    { name: 'verse', bars: [{ chord: 'Em' }, { chord: 'G' }, { chord: 'D' }, { chord: 'C' }] },
+    { name: 'chorus', bars: [{ chord: 'Em' }, { chord: 'G' }, { chord: 'D' }, { chord: 'C' }] },
+  ],
+});
+
+const PERFECT: Song = parseSong({
+  title: 'Perfect',
+  bpm: 95,
+  key: 'G',
+  timeSig: [4, 4],
+  sections: [
+    { name: 'verse', bars: [{ chord: 'G' }, { chord: 'Em' }, { chord: 'C' }, { chord: 'D' }] },
+    { name: 'chorus', bars: [{ chord: 'G' }, { chord: 'Em' }, { chord: 'C' }, { chord: 'D' }] },
   ],
 });
 
 export const SONGS: Record<string, Song> = {
-  saints: SAINTS,
-  campfire: CAMPFIRE,
+  'viva-la-vida': VIVA_LA_VIDA,
+  'counting-stars': COUNTING_STARS,
+  perfect: PERFECT,
 };
 
-export const DEFAULT_SONG_ID = 'saints';
+export const DEFAULT_SONG_ID = 'viva-la-vida';
 
 export function getSong(id: string): Song {
   return SONGS[id] ?? SONGS[DEFAULT_SONG_ID];

@@ -31,7 +31,7 @@ describe('Session seams', () => {
     expect(info.players[0].score.points).toBe(0);
     // HudInfo fields stay at the top level.
     expect(info).toMatchObject({ mode: 'easy', songTitle: null, songRunning: false, beatsPerBar: 4, paused: false });
-    expect(info.song).toMatchObject({ id: 'saints', bpm: 120, barCount: 16, running: false, lyric: null });
+    expect(info.song).toMatchObject({ id: 'viva-la-vida', bpm: 138, barCount: 8, running: false, lyric: null });
     expect(info.backing.enabled).toBe(true);
     expect(info.singer).toMatchObject({ enabled: false, level: 0, error: null });
     s.stop();
