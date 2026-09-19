@@ -37,6 +37,8 @@ export interface SongInfo {
   /** 0..1 inside the beat. */
   beatPhase: number;
   chord: ChordName | null;
+  /** Chord of the next bar (it can equal `chord`); null while no song runs. */
+  nextChord: ChordName | null;
   lyric: string | null;
   nextLyric: string | null;
   section: string | null;

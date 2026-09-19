@@ -5,15 +5,33 @@ import type { DrumHitEvent, SongContext } from '@/core/types';
 import { SONGS, getSong } from '@/song/songs';
 import { barCount, chordAtBar, flattenBars, parseSong } from '@/song/types';
 
-const ALLOWED_CHORDS = new Set(['G', 'C', 'D', 'Em', 'Am', 'A']);
+/** Chords with a voicing in song/chords.ts. */
+const ALLOWED_CHORDS = new Set(['G', 'C', 'D', 'Em', 'Am', 'A', 'F']);
+const DEMO_SONGS = ['viva-la-vida', 'counting-stars', 'perfect'];
 
 describe('song schema and lookups', () => {
-  it('built-in songs validate and only use chords the classifier knows', () => {
+  it('built-in songs validate and only use chords that have a voicing', () => {
     for (const song of Object.values(SONGS)) {
       expect(() => parseSong(song)).not.toThrow();
       for (const bar of flattenBars(song)) expect(ALLOWED_CHORDS.has(bar.chord)).toBe(true);
     }
     expect(getSong('nope').title).toBe(getSong('saints').title);
+  });
+
+  it('ships the three demo charts under the ids the song deck looks up, chords only', () => {
+    expect(Object.keys(SONGS)).toEqual([...DEMO_SONGS, 'saints', 'campfire']);
+    for (const id of DEMO_SONGS) {
+      const song = getSong(id);
+      const bars = flattenBars(song);
+      expect(song.timeSig).toEqual([4, 4]);
+      expect(bars.length % 4).toBe(0); // whole four-bar phrases, so the loop point is musical
+      expect(bars.every((b) => b.lyric === undefined)).toBe(true);
+    }
+    expect(flattenBars(getSong('viva-la-vida')).slice(0, 4).map((b) => b.chord)).toEqual(['C', 'D', 'G', 'Em']);
+    expect(flattenBars(getSong('counting-stars')).slice(0, 4).map((b) => b.chord)).toEqual(['Am', 'C', 'G', 'F']);
+    const perfect = flattenBars(getSong('perfect'));
+    expect(perfect.slice(0, 4).map((b) => b.chord)).toEqual(['G', 'Em', 'C', 'D']);
+    expect(perfect.filter((b) => b.section === 'chorus').slice(0, 4).map((b) => b.chord)).toEqual(['Em', 'C', 'G', 'D']);
   });
 
   it('rejects malformed charts', () => {
