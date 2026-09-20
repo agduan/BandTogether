@@ -236,7 +236,6 @@ function Stage({
   const [drumsEnabled, setDrumsEnabled] = useState(config.backing.parts.drums);
   const [sessionInfo, setSessionInfo] = useState<KaraokeSessionInfo | null>(null);
   const [micPending, setMicPending] = useState(false);
-  const [vocalsExpanded, setVocalsExpanded] = useState(false);
   const [microphones, setMicrophones] = useState<MicrophoneInfo[]>([]);
   const [micDeviceId, setMicDeviceId] = useState(config.singer.deviceId);
   const [echo, setEcho] = useState(config.singer.echo);
@@ -530,28 +529,28 @@ function Stage({
             <button className="btn band-summary__edit" type="button" disabled={!live} onClick={() => setEditingPlayers(true)}>
               Edit players
             </button>
-          </div>
-
-          <div className="control-section">
-            <div className="segmented" data-mode={mode} role="group" aria-label="Difficulty">
-              <button
-                type="button"
-                onClick={() => applyMode('easy')}
-                disabled={!live}
-                aria-pressed={mode === 'easy'}
-                title="Easy: the song chooses what you play."
-              >
-                Easy
-              </button>
-              <button
-                type="button"
-                onClick={() => applyMode('hard')}
-                disabled={!live || !hardModeAvailable}
-                aria-pressed={mode === 'hard'}
-                title={hardModeAvailable ? 'Hard: your gesture chooses what you play.' : 'Guitar is easy mode only.'}
-              >
-                Hard
-              </button>
+            <div className="sidebar-field">
+              <span>Mode</span>
+              <div className="segmented" data-mode={mode} role="group" aria-label="Difficulty">
+                <button
+                  type="button"
+                  onClick={() => applyMode('easy')}
+                  disabled={!live}
+                  aria-pressed={mode === 'easy'}
+                  title="Easy: the song chooses what you play."
+                >
+                  Easy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyMode('hard')}
+                  disabled={!live || !hardModeAvailable}
+                  aria-pressed={mode === 'hard'}
+                  title={hardModeAvailable ? 'Hard: your gesture chooses what you play.' : 'Guitar is easy mode only.'}
+                >
+                  Hard
+                </button>
+              </div>
             </div>
           </div>
 
@@ -633,18 +632,7 @@ function Stage({
           </div>
 
           <div className="control-section vocals-sidebar">
-            <div className="vocals-sidebar__head">
-              <span className="control-label">Vocals</span>
-              <button
-                type="button"
-                className="vocals-sidebar__expand"
-                aria-expanded={vocalsExpanded}
-                aria-controls="vocals-panel"
-                onClick={() => setVocalsExpanded((expanded) => !expanded)}
-              >
-                {vocalsExpanded ? 'Hide' : 'Expand'}
-              </button>
-            </div>
+            <span className="control-label">Vocals</span>
             <button
               type="button"
               className="mic-button mic-button--sidebar"
@@ -661,6 +649,60 @@ function Stage({
                     ? 'Turn microphone off'
                     : 'Enable microphone'}
             </button>
+            <div className="mic-level" aria-label={`Microphone level ${Math.round((singerInfo?.level ?? 0) * 100)}%`}>
+              <span>Level</span>
+              <i>
+                <b style={{ width: `${Math.round((singerInfo?.level ?? 0) * 100)}%` }} />
+              </i>
+            </div>
+            {microphones.length > 0 && (
+              <label className="mic-input-picker">
+                <span>Input</span>
+                <select
+                  className="select select--sm"
+                  value={micDeviceId}
+                  disabled={micPending}
+                  onChange={(event) => void onPickMicrophone(event.target.value)}
+                  aria-label="Microphone input"
+                >
+                  {microphones.map((microphone) => (
+                    <option key={microphone.deviceId} value={microphone.deviceId}>
+                      {microphone.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <div className="vocals-sidebar__effects">
+              <label>
+                <span>
+                  Echo <output>{Math.round(echo * 100)}%</output>
+                </span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={echo}
+                  disabled={!live}
+                  onChange={(event) => changeEcho(Number(event.target.value))}
+                />
+              </label>
+              <label>
+                <span>
+                  Reverb <output>{Math.round(reverb * 100)}%</output>
+                </span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={reverb}
+                  disabled={!live}
+                  onChange={(event) => changeReverb(Number(event.target.value))}
+                />
+              </label>
+            </div>
             <div className="vocals-sidebar__status" data-state={singerInfo?.error ? 'error' : singerInfo?.enabled ? 'live' : 'idle'}>
               {singerInfo?.error ??
                 (singerId < 0
@@ -867,111 +909,6 @@ function Stage({
           </details>
         </div>
       </div>
-
-      {vocalsExpanded && (
-      <section id="vocals-panel" className="singer-panel" aria-labelledby="singer-title">
-        <div className="singer-panel__intro">
-          <span className="singer-panel__mark" aria-hidden="true">
-            V
-          </span>
-          <div>
-            <h2 id="singer-title">Vocals</h2>
-            <p>
-              {singerId >= 0 ? `Assigned to Player ${singerId + 1}. ` : 'Assign vocals from Edit Players. '}
-              Start with wired headphones; laptop speakers may feed back.
-            </p>
-          </div>
-        </div>
-
-        <div className="singer-panel__mic">
-          <button
-            type="button"
-            className="mic-button"
-            data-enabled={singerInfo?.enabled ? '' : undefined}
-            disabled={!live || singerId < 0 || micPending || singerInfo?.available === false}
-            onClick={() => void toggleSinger()}
-          >
-            <span className="mic-button__dot" aria-hidden="true" />
-            {micPending
-              ? 'Requesting microphone…'
-              : singerInfo?.available === false
-                ? 'Microphone unavailable'
-                : singerInfo?.enabled
-                  ? 'Turn microphone off'
-                  : 'Enable microphone'}
-          </button>
-          <div className="mic-level" aria-label={`Microphone level ${Math.round((singerInfo?.level ?? 0) * 100)}%`}>
-            <span>Level</span>
-            <i>
-              <b style={{ width: `${Math.round((singerInfo?.level ?? 0) * 100)}%` }} />
-            </i>
-          </div>
-          {microphones.length > 0 && (
-            <label className="mic-input-picker">
-              <span>Input</span>
-              <select
-                className="select select--sm"
-                value={micDeviceId}
-                disabled={micPending}
-                onChange={(event) => void onPickMicrophone(event.target.value)}
-                aria-label="Microphone input"
-              >
-                {microphones.map((microphone) => (
-                  <option key={microphone.deviceId} value={microphone.deviceId}>
-                    {microphone.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-        </div>
-
-        <div className="singer-panel__effects">
-          <label>
-            <span>
-              Echo <output>{Math.round(echo * 100)}%</output>
-            </span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={echo}
-              disabled={!live}
-              onChange={(event) => changeEcho(Number(event.target.value))}
-            />
-          </label>
-          <label>
-            <span>
-              Reverb <output>{Math.round(reverb * 100)}%</output>
-            </span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={reverb}
-              disabled={!live}
-              onChange={(event) => changeReverb(Number(event.target.value))}
-            />
-          </label>
-        </div>
-
-        <div className="singer-panel__status" data-state={singerInfo?.error ? 'error' : singerInfo?.enabled ? 'live' : 'idle'}>
-          <i />
-          <span>
-            {singerInfo?.error ??
-              (singerInfo?.enabled
-                ? `Player ${singerId + 1} mic is live through the band mix`
-                : !live
-                  ? 'Start Band to enable vocals'
-                  : singerId < 0
-                    ? 'No singer assigned'
-                    : `Player ${singerId + 1} has vocals · microphone is off`)}
-          </span>
-        </div>
-      </section>
-      )}
 
       {showDebug && session && <DebugPanel session={session} config={config} onClose={() => setShowDebug(false)} />}
     </section>
