@@ -7,6 +7,8 @@ const VIVA_LA_VIDA: Song = parseSong({
   bpm: 138,
   key: 'G',
   timeSig: [4, 4],
+  // The short “I” pickup lands over the intro loop's closing Em before the verse returns to C.
+  vocalCue: { pitch: 'B3', lyric: 'I used to…', chord: 'Em' },
   sections: [
     { name: 'verse', bars: [{ chord: 'C' }, { chord: 'D' }, { chord: 'G' }, { chord: 'Em' }] },
     { name: 'chorus', bars: [{ chord: 'C' }, { chord: 'D' }, { chord: 'G' }, { chord: 'Em' }] },
@@ -19,6 +21,7 @@ const COUNTING_STARS: Song = parseSong({
   bpm: 122,
   key: 'G',
   timeSig: [4, 4],
+  vocalCue: { pitch: 'A3', lyric: 'Lately, I’ve been…', chord: 'Em' },
   sections: [
     { name: 'verse', bars: [{ chord: 'Em' }, { chord: 'G' }, { chord: 'D' }, { chord: 'C' }] },
     { name: 'chorus', bars: [{ chord: 'Em' }, { chord: 'G' }, { chord: 'D' }, { chord: 'C' }] },
@@ -31,6 +34,7 @@ const STAND_BY_ME: Song = parseSong({
   bpm: 118,
   key: 'G',
   timeSig: [4, 4],
+  vocalCue: { pitch: 'B3', lyric: 'When the night…', chord: 'G' },
   sections: [
     { name: 'verse', bars: [{ chord: 'G' }, { chord: 'Em' }, { chord: 'C' }, { chord: 'D' }] },
     { name: 'chorus', bars: [{ chord: 'G' }, { chord: 'Em' }, { chord: 'C' }, { chord: 'D' }] },
@@ -43,6 +47,7 @@ const ROLLING_IN_THE_DEEP: Song = parseSong({
   bpm: 105,
   key: 'Cm',
   timeSig: [4, 4],
+  vocalCue: { pitch: 'C4', lyric: 'There’s a fire…', chord: 'Cm' },
   sections: [
     { name: 'verse', bars: [{ chord: 'Cm' }, { chord: 'Bb' }, { chord: 'Ab' }, { chord: 'Ab' }] },
     { name: 'chorus', bars: [{ chord: 'Cm' }, { chord: 'Bb' }, { chord: 'Ab' }, { chord: 'Ab' }] },
@@ -55,6 +60,7 @@ const SOMEONE_LIKE_YOU: Song = parseSong({
   bpm: 67,
   key: 'A',
   timeSig: [4, 4],
+  vocalCue: { pitch: 'E4', lyric: 'I heard that…', chord: 'A' },
   sections: [
     { name: 'verse', bars: [{ chord: 'A' }, { chord: 'E' }, { chord: 'F#m' }, { chord: 'D' }] },
     { name: 'chorus', bars: [{ chord: 'A' }, { chord: 'E' }, { chord: 'F#m' }, { chord: 'D' }] },
@@ -67,6 +73,7 @@ const MR_BRIGHTSIDE: Song = parseSong({
   bpm: 148,
   key: 'C',
   timeSig: [4, 4],
+  vocalCue: { pitch: 'C4', lyric: 'Coming out of…', chord: 'C' },
   sections: [
     { name: 'verse', bars: [{ chord: 'C' }, { chord: 'F' }, { chord: 'Am' }, { chord: 'G' }] },
     { name: 'chorus', bars: [{ chord: 'C' }, { chord: 'F' }, { chord: 'Am' }, { chord: 'G' }] },
@@ -83,6 +90,7 @@ const I_WILL_SURVIVE: Song = parseSong({
   bpm: 117,
   key: 'Am',
   timeSig: [4, 4],
+  vocalCue: { pitch: 'C5', lyric: 'At first I…', chord: 'Am' },
   sections: [
     {
       name: 'loop',
@@ -92,6 +100,16 @@ const I_WILL_SURVIVE: Song = parseSong({
       ],
     },
   ],
+});
+
+/** A clock shell for melody-driven harmony; its chord is replaced live by the singer. */
+export const SING_FREELY_ID = 'sing-freely';
+export const SING_FREELY_SONG: Song = parseSong({
+  title: 'Sing freely',
+  bpm: 96,
+  key: 'G',
+  timeSig: [4, 4],
+  sections: [{ name: 'Live harmony', bars: [{ chord: 'G' }] }],
 });
 
 export const SONGS: Record<string, Song> = {

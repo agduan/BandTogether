@@ -1,5 +1,6 @@
 import type { ChordName, InstrumentId, PlayerId, PlayMode } from '@/core/types';
 import type { CalibrationState } from '@/core/views';
+import type { HarmonySnapshot } from '@/audio/harmonizer';
 
 /**
  * Everything the UI and HUD need to know about a running session, as plain
@@ -71,6 +72,8 @@ export interface SingerInfo {
   deviceId: string;
   /** Last mic error (e.g. permission denied); null when fine. */
   error: string | null;
+  /** Live melody analysis and the harmony selected for sing-freely mode. */
+  harmony: HarmonySnapshot;
 }
 
 export interface PlayerInfo {

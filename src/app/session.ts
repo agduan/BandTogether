@@ -12,12 +12,13 @@ import { MAX_PLAYERS, PlayerAssigner, regionFor } from '@/vision/players';
 import { Recorder, Replayer, type Recording, type ReplayerOptions } from '@/vision/recorder';
 import { BackingBand, partPlayedBy, type BackingPart } from '@/audio/backing';
 import { AudioEngine } from '@/audio/engine';
-import { createResolver, FREEPLAY_CONTEXT } from '@/audio/modes';
+import { createResolver, FREEPLAY_CONTEXT, strumChord } from '@/audio/modes';
 import { SingerChannel, type MicrophoneInfo } from '@/audio/singer';
-import { SongClock } from '@/audio/songClock';
+import { SongClock, type ClockStep } from '@/audio/songClock';
+import { GuitarVoice } from '@/audio/voices/guitarVoice';
 import type { InstrumentId, PlayerId, PlayMode, SongContext, Voice } from '@/core/types';
 import { Hud } from '@/render/hud';
-import { getSong } from '@/song/songs';
+import { getSong, SING_FREELY_ID, SING_FREELY_SONG } from '@/song/songs';
 import { barAt, barCount } from '@/song/types';
 import { InstrumentController } from './controller';
 import { createInstrument } from './instruments';
@@ -62,6 +63,9 @@ export class Session {
   /** One post-instrument gain per player, shared across instrument swaps. */
   private readonly playerGains: [Tone.Gain | null, Tone.Gain | null] = [null, null];
   private readonly playerVolumes: [number, number] = [1, 1];
+  /** Sampled guitar that accompanies sing-freely mode without requiring a camera gesture. */
+  private autoGuitar: GuitarVoice | null = null;
+  private singingFreely = false;
   /** Players the UI has not named since the last `setNumPlayers` (see there). */
   private unconfirmed: Set<PlayerId> | null = null;
   private songClock: SongClock | null = null;
@@ -287,6 +291,8 @@ export class Session {
     }
     const { parts: on } = this.config.backing;
     for (const part of ['bass', 'pad', 'drums'] as const) if (!on[part]) parts.add(part);
+    // The always-on sampled guitar is the harmonic backing in sing-freely mode.
+    if (this.singingFreely) parts.add('pad');
     return parts;
   }
 
@@ -340,12 +346,13 @@ export class Session {
 
   private songInfo(): SongInfo {
     const id = this.config.play.song;
-    const song = this.songClock?.song ?? getSong(id);
+    const liveHarmony = id === SING_FREELY_ID;
+    const song = this.songClock?.song ?? (liveHarmony ? SING_FREELY_SONG : getSong(id));
     const ctx = this.songContext();
     const running = this.songRunning;
     const counting = ctx.countIn === true;
-    const bar = running ? barAt(song, ctx.bar) : null;
-    const nextBar = running ? barAt(song, ctx.bar + 1) : null;
+    const bar = running && !liveHarmony ? barAt(song, ctx.bar) : null;
+    const nextBar = running && !liveHarmony ? barAt(song, ctx.bar + 1) : null;
     return {
       id,
       title: song.title,
@@ -358,8 +365,8 @@ export class Session {
       nextChord: nextBar?.chord ?? null,
       lyric: bar?.lyric ?? null,
       nextLyric: nextBar?.lyric ?? null,
-      section: bar?.section ?? null,
-      barCount: barCount(song),
+      section: liveHarmony && running ? 'Live harmony' : (bar?.section ?? null),
+      barCount: liveHarmony ? 0 : barCount(song),
       running,
       countIn: { active: counting, beat: counting ? ctx.beat : 0, beats: this.songClock?.countInBeats ?? song.timeSig[0] },
     };
@@ -381,7 +388,7 @@ export class Session {
   }
 
   get songTitle(): string | null {
-    return this.songClock?.song.title ?? getSong(this.config.play.song).title;
+    return this.songClock?.song.title ?? (this.config.play.song === SING_FREELY_ID ? SING_FREELY_SONG : getSong(this.config.play.song)).title;
   }
 
   /** Start (or restart) the song clock; needs the audio engine running. */
@@ -389,15 +396,22 @@ export class Session {
     if (this.audio.state !== 'running') return;
     this.stopSong();
     this.config.play.song = songId;
+    this.singingFreely = songId === SING_FREELY_ID;
+    this.singer.setHarmonyActive(this.singingFreely);
+    if (this.singingFreely) this.ensureAutoGuitar();
     const { play } = this.config;
-    this.songClock = new SongClock(getSong(songId), {
+    const song = this.singingFreely ? SING_FREELY_SONG : getSong(songId);
+    this.songClock = new SongClock(song, {
       click: play.click,
-      autoKick: play.autoKick && this.mode === 'easy',
+      autoKick: !this.singingFreely && play.autoKick && this.mode === 'easy',
       kickVoice: () => this.kickVoice(),
       kickVelocity: () => this.config.backing.autoKickVelocity,
       carried: () => this.backingOn,
+      chordAtBar: this.singingFreely ? () => this.singer.harmonizer.chord : undefined,
+      onBar: this.singingFreely ? () => void this.singer.harmonizer.chooseChord() : undefined,
     });
     this.songClock.onStep((step, time) => {
+      if (this.singingFreely) this.playAutoGuitar(step, time);
       if (this.backingOn) this.backing.step(step, time, this.mutedParts());
     });
     this.songClock.start();
@@ -407,7 +421,35 @@ export class Session {
   stopSong(): void {
     this.songClock?.dispose();
     this.songClock = null;
+    this.singingFreely = false;
+    this.singer.setHarmonyActive(false);
+    this.autoGuitar?.releaseAll();
     this.backing.releaseAll();
+  }
+
+  /** null returns to automatic key estimation. */
+  setSingingKey(key: string | null): void {
+    this.singer.setHarmonyKey(key);
+  }
+
+  private ensureAutoGuitar(): void {
+    if (this.autoGuitar) return;
+    this.autoGuitar = new GuitarVoice(() => this.audio.output, () => this.config.guitar);
+    void this.audio.addVoice(this.autoGuitar);
+  }
+
+  /** A restrained pop strum; the selected harmony itself only changes at bar boundaries. */
+  private playAutoGuitar(step: ClockStep, time: number): void {
+    if (step.countIn) return;
+    const down = step.sub === 0 && (step.beat === 0 || step.beat === 2);
+    const up = step.sub === 1 && (step.beat === 1 || step.beat === 3);
+    if (!down && !up) return;
+    const direction = down ? 'down' : 'up';
+    const sound = strumChord(
+      { type: 'guitar.strum', t: performance.now(), playerId: 0, direction, velocity: down ? 0.78 : 0.52, chord: step.chord },
+      step.chord,
+    );
+    this.autoGuitar?.trigger(sound, time);
   }
 
   private songContext(): SongContext {
@@ -626,6 +668,10 @@ export class Session {
     this.isPaused = false;
     this.stopSong();
     this.backing.dispose(); // before the engine: its nodes hang off the master
+    if (this.autoGuitar) {
+      this.audio.removeVoice(this.autoGuitar);
+      this.autoGuitar = null;
+    }
     for (const gain of this.playerGains) gain?.dispose();
     this.playerGains.fill(null);
     this.audio.stop();

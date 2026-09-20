@@ -18,12 +18,19 @@ export const SongSectionSchema = z.object({
   bars: z.array(SongBarSchema).min(1),
 });
 
+export const VocalCueSchema = z.object({
+  pitch: z.string().regex(/^[A-G](?:#|b)?-?\d+$/),
+  lyric: z.string().min(1),
+  chord: z.string().min(1),
+});
+
 export const SongSchema = z.object({
   title: z.string().min(1),
   bpm: z.number().positive().max(300),
   key: z.string().min(1),
   timeSig: z.tuple([z.number().int().positive(), z.number().int().positive()]),
   sections: z.array(SongSectionSchema).min(1),
+  vocalCue: VocalCueSchema.optional(),
   backingTrackUrl: z.string().optional(),
 });
 

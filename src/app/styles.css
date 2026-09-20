@@ -599,6 +599,115 @@ summary:focus-visible {
   font-size: 0.69rem;
 }
 
+.vocal-cue {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 0 8px;
+  padding: 7px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  text-align: left;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.vocal-cue:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+}
+
+.vocal-cue > span:first-child {
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.vocal-cue__pitch {
+  grid-row: 1 / 3;
+  grid-column: 2;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.vocal-cue__pitch strong {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.vocal-cue__pitch b {
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.vocal-cue small {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.67rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-harmony {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--easy) 42%, var(--border));
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--easy) 7%, var(--surface));
+}
+
+.live-harmony__readout {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 1px 8px;
+}
+
+.live-harmony__readout span,
+.live-harmony label > span {
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.live-harmony__readout strong {
+  grid-row: 1 / 3;
+  grid-column: 2;
+  color: var(--easy);
+  font-family: var(--mono);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.live-harmony__readout small {
+  color: var(--text-muted);
+  font-size: 0.61rem;
+  font-weight: 650;
+}
+
+.live-harmony label {
+  display: grid;
+  gap: 3px;
+}
+
+.live-harmony .select {
+  width: 100%;
+  max-width: none;
+}
+
 .vocals-sidebar__effects {
   display: grid;
   gap: 7px;

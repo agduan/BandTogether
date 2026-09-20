@@ -279,11 +279,22 @@ export interface SongSection {
   bars: SongBar[];
 }
 
+export interface VocalCue {
+  /** Concert pitch in scientific pitch notation (C4 = middle C). */
+  pitch: string;
+  /** Short opening lyric shown with the cue; charts remain otherwise lyric-free. */
+  lyric: string;
+  /** Programmed chart chord sounding under the first sung pitch. */
+  chord: ChordName;
+}
+
 export interface Song {
   title: string;
   bpm: number;
   key: string;
   timeSig: [number, number];
   sections: SongSection[];
+  /** Starting vocal note after any chart transposition. */
+  vocalCue?: VocalCue;
   backingTrackUrl?: string;
 }

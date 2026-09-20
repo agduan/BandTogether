@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import * as Tone from 'tone';
 import { loadConfig } from './config';
 import { Session, type SessionPhase, type SessionStats } from './session';
 import type { SessionInfo, SongInfo } from './sessionInfo';
@@ -8,7 +9,8 @@ import type { MicrophoneInfo } from '@/audio/singer';
 import { bus } from '@/core/bus';
 import type { PlayMode, UiToastEvent } from '@/core/types';
 import { ConfigControls, DebugPanel, resetConfigControls } from '@/render/DebugPanel';
-import { SONGS } from '@/song/songs';
+import { MAJOR_KEY_OPTIONS } from '@/audio/harmonizer';
+import { SING_FREELY_ID, SING_FREELY_SONG, SONGS } from '@/song/songs';
 import bassIconUrl from '../../bass.png';
 import guitarIconUrl from '../../guitar.png';
 
@@ -215,6 +217,7 @@ function Stage({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sessionRef = useRef<Session | null>(null);
+  const vocalCueSynthRef = useRef<Tone.Synth | null>(null);
   const nextToastIdRef = useRef(0);
   const [phase, setPhase] = useState<SessionPhase>('idle');
   const [detail, setDetail] = useState<string>('');
@@ -267,6 +270,14 @@ function Stage({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  useEffect(
+    () => () => {
+      vocalCueSynthRef.current?.dispose();
+      vocalCueSynthRef.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     const timers = new Set<number>();
@@ -407,11 +418,25 @@ function Stage({
     if (sessionRef.current?.songRunning) sessionRef.current.startSong();
   };
 
-  const toggleSong = () => {
+  const toggleSong = async () => {
     const s = sessionRef.current;
     if (!s) return;
     if (s.songRunning) s.stopSong();
-    else s.startSong(songId);
+    else {
+      if (songId === SING_FREELY_ID && !s.singer.enabled) {
+        setMicPending(true);
+        try {
+          await s.singer.setEnabled(true);
+          setSessionInfo(s.info() as KaraokeSessionInfo);
+          if (!s.singer.enabled) return;
+          setMicrophones(await s.listMicrophones());
+          setMicDeviceId(s.currentMicrophoneId);
+        } finally {
+          setMicPending(false);
+        }
+      }
+      s.startSong(songId);
+    }
     setSongRunning(s.songRunning);
   };
 
@@ -427,7 +452,11 @@ function Stage({
     setSongId(id);
     config.play.song = id;
     const s = sessionRef.current;
-    if (s?.songRunning) s.startSong(id);
+    if (!s?.songRunning) return;
+    // Entering live harmony needs a permission-granting Play click if the mic is still off.
+    if (id === SING_FREELY_ID && !s.singer.enabled) s.stopSong();
+    else s.startSong(id);
+    setSongRunning(s.songRunning);
   };
 
   const toggleBacking = () => {
@@ -511,6 +540,25 @@ function Stage({
     sessionRef.current?.singer.setReverb(amount);
   };
 
+  const changeSingingKey = (key: string) => {
+    const current = sessionRef.current;
+    current?.setSingingKey(key === 'auto' ? null : key);
+    if (current) setSessionInfo(current.info() as KaraokeSessionInfo);
+  };
+
+  const playVocalCue = async (pitch: string) => {
+    await Tone.start();
+    const synth =
+      vocalCueSynthRef.current ??
+      new Tone.Synth({
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.02, decay: 0.12, sustain: 0.55, release: 0.45 },
+        volume: -8,
+      }).toDestination();
+    vocalCueSynthRef.current = synth;
+    synth.triggerAttackRelease(pitch, 0.9);
+  };
+
   const aspect = stats && stats.width > 0 ? `${stats.width} / ${stats.height}` : '4 / 3';
   const visiblePlayers = players.slice(0, playerCount);
   const assignedPlayers = visiblePlayers.filter((player) => player.instrument !== 'none');
@@ -520,6 +568,9 @@ function Stage({
   const singerId = visiblePlayers.findIndex((player) => player.vocals);
   const songInfo = sessionInfo?.song;
   const singerInfo = sessionInfo?.singer;
+  const isSingFreely = songId === SING_FREELY_ID;
+  const harmony = singerInfo?.harmony;
+  const vocalCue = isSingFreely ? undefined : SONGS[songInfo?.running ? songInfo.id : songId]?.vocalCue;
   const songProgress =
     songInfo && songInfo.running && songInfo.barCount > 0
       ? (((songInfo.bar % songInfo.barCount) + (songInfo.beat + songInfo.beatPhase) / (sessionInfo?.beatsPerBar ?? 4)) /
@@ -611,11 +662,11 @@ function Stage({
             <div className="control-actions">
               <button
                 className={`btn ${songRunning ? '' : 'btn--primary'}`}
-                onClick={toggleSong}
+                onClick={() => void toggleSong()}
                 disabled={!live}
                 title="Start or stop the song clock"
               >
-                {songRunning ? '■ Stop' : '▶ Play'}
+                {songRunning ? '■ Stop' : isSingFreely ? '▶ Start' : '▶ Play'}
               </button>
               <button
                 className={`btn ${paused ? 'btn--paused' : ''}`}
@@ -633,6 +684,7 @@ function Stage({
               disabled={!live}
               aria-label="Song"
             >
+              <option value={SING_FREELY_ID}>{SING_FREELY_SONG.title} · {SING_FREELY_SONG.bpm} bpm</option>
               {Object.entries(SONGS).map(([id, s]) => (
                 <option key={id} value={id}>
                   {s.title} · {s.bpm} bpm
@@ -697,11 +749,54 @@ function Stage({
 
           <div className="control-section vocals-sidebar">
             <span className="control-label">Vocals</span>
+            {isSingFreely && (
+              <div className="live-harmony">
+                <div className="live-harmony__readout">
+                  <span>Detected note</span>
+                  <strong>{harmony?.detectedNote ?? '—'}</strong>
+                  <small>
+                    {harmony?.keyOverride ? `${harmony.key} major · manual` : `Auto key · ${harmony?.key ?? 'G'} major`}
+                  </small>
+                </div>
+                <label>
+                  <span>Key</span>
+                  <select
+                    className="select select--sm"
+                    value={harmony?.keyOverride ?? 'auto'}
+                    disabled={!live}
+                    onChange={(event) => changeSingingKey(event.target.value)}
+                  >
+                    <option value="auto">Auto-detect</option>
+                    {MAJOR_KEY_OPTIONS.map((key) => (
+                      <option key={key.value} value={key.value}>
+                        {key.label} major
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+            {vocalCue && (
+              <button
+                type="button"
+                className="vocal-cue"
+                aria-label={`Play starting vocal note ${vocalCue.pitch} for ${vocalCue.lyric}, sung over ${vocalCue.chord}`}
+                title={`Click to hear ${vocalCue.pitch}`}
+                onClick={() => void playVocalCue(vocalCue.pitch)}
+              >
+                <span>Starting note</span>
+                <span className="vocal-cue__pitch">
+                  <strong>{vocalCue.pitch}</strong>
+                  <b>on {vocalCue.chord}</b>
+                </span>
+                <small>“{vocalCue.lyric}”</small>
+              </button>
+            )}
             <button
               type="button"
               className="mic-button mic-button--sidebar"
               data-enabled={singerInfo?.enabled ? '' : undefined}
-              disabled={!live || singerId < 0 || micPending || singerInfo?.available === false}
+              disabled={!live || (!isSingFreely && singerId < 0) || micPending || singerInfo?.available === false}
               onClick={() => void toggleSinger()}
             >
               <span className="mic-button__dot" aria-hidden="true" />
@@ -828,9 +923,15 @@ function Stage({
           {live && (
             <div className="karaoke-hud" aria-live="polite">
               <div className="karaoke-hud__song">
-                <span>{songInfo?.running ? songInfo.title : SONGS[songId]?.title}</span>
+                <span>{songInfo?.running ? songInfo.title : isSingFreely ? SING_FREELY_SONG.title : SONGS[songId]?.title}</span>
                 <small>
-                  {songInfo?.running
+                  {isSingFreely && songInfo?.running
+                    ? harmony?.detectedNote
+                      ? `Hearing ${harmony.detectedNote} · ${harmony.key} major`
+                      : singerInfo?.enabled
+                        ? `Sing a few notes · ${harmony?.key ?? 'G'} major`
+                        : 'Microphone off'
+                    : songInfo?.running
                     ? `${songInfo.section ?? 'Song'} · bar ${(songInfo.bar % Math.max(songInfo.barCount, 1)) + 1}`
                     : 'Choose a song, then press Play'}
                 </small>
@@ -842,8 +943,8 @@ function Stage({
                 </div>
                 <span aria-hidden="true">→</span>
                 <div>
-                  <small>Next</small>
-                  <strong>{songInfo?.nextChord ?? '—'}</strong>
+                  <small>{isSingFreely ? 'Detected' : 'Next'}</small>
+                  <strong>{isSingFreely ? (harmony?.detectedNote ?? '—') : (songInfo?.nextChord ?? '—')}</strong>
                 </div>
               </div>
               <div className="karaoke-hud__beat" aria-label={`Beat ${(songInfo?.beat ?? 0) + 1}`}>
@@ -851,9 +952,11 @@ function Stage({
                   <i key={beat} data-active={songInfo?.running && beat === songInfo.beat ? '' : undefined} />
                 ))}
               </div>
-              <div className="karaoke-hud__progress" aria-hidden="true">
-                <i style={{ width: `${songProgress}%` }} />
-              </div>
+              {!isSingFreely && (
+                <div className="karaoke-hud__progress" aria-hidden="true">
+                  <i style={{ width: `${songProgress}%` }} />
+                </div>
+              )}
             </div>
           )}
           {live && songInfo?.countIn?.active && (
