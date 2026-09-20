@@ -87,3 +87,80 @@ export function grooveRole(beatInBar: number, beatsPerBar: number, bar: number):
 export function isAutoKickBeat(beat: number): boolean {
   return beat % 2 === 0;
 }
+
+/** The eighth-note slot a position in the bar is nearest to, and how far off it is. */
+export interface GridSlot {
+  /** Eighth-note index inside the bar; equals `beatsPerBar * 2` when the hit rounds up to beat 1 of the next bar. */
+  slot: number;
+  /** Signed distance to that slot in eighths, -0.5..0.5; negative = the hit is early. */
+  offset: number;
+}
+
+export function nearestSlot(beatInBar: number): GridSlot {
+  const pos = beatInBar * 2;
+  const slot = Math.round(pos);
+  return { slot, offset: pos - slot };
+}
+
+/** A hit is "in time" when it lands within `window` eighths of an eighth-note slot (0.5 = everything passes). */
+export function isInTime(beatInBar: number, window: number): boolean {
+  return Math.abs(nearestSlot(beatInBar).offset) <= window;
+}
+
+/** A song position as a beat count from bar 0 (the count-in is all beat 0 and below; see `absoluteSlot`). */
+export interface GridPosition {
+  bar: number;
+  beat: number;
+  beatPhase: number;
+  beatsPerBar: number;
+  countIn?: boolean;
+}
+
+/**
+ * The eighth-note slot nearest a song position, counted from bar 0 of the
+ * chart. During the count-in only the very last slot maps onto the chart (a
+ * hit just before the downbeat belongs to beat 1 of bar 0); earlier ones are
+ * null.
+ */
+export function absoluteSlot(p: GridPosition): number | null {
+  const slots = p.beatsPerBar * 2;
+  const { slot } = nearestSlot(p.beat + p.beatPhase);
+  if (p.countIn) return slot >= slots ? 0 : null;
+  return p.bar * slots + slot;
+}
+
+/**
+ * Who plays the kick on 1 and 3 in easy mode. The clock's auto kick is a
+ * stand-in for a drummer who is not playing it; once the player lands their
+ * own kick on one of those beats, the auto kick steps aside so the hit is
+ * heard as theirs:
+ * - a hit that comes just before the beat claims that beat (the auto kick for
+ *   it has not sounded yet, so it is skipped);
+ * - a hit on the previous kick beat, early or late, claims the next one too
+ *   (most camera hits land a few ms late, after the auto kick has gone).
+ * When the player stops, one kick is missing and then the auto kick is back.
+ */
+export class KickCover {
+  private lastBeat = -Infinity;
+
+  /** The player's hit sounded a kick at this position. */
+  notePlayerKick(p: GridPosition): void {
+    const slot = absoluteSlot(p);
+    if (slot === null || slot % 2 !== 0) return;
+    const beat = slot / 2;
+    if (!isAutoKickBeat(((beat % p.beatsPerBar) + p.beatsPerBar) % p.beatsPerBar)) return;
+    this.lastBeat = Math.max(this.lastBeat, beat);
+  }
+
+  /** Should the auto kick on (`bar`, `beat`) stay silent? */
+  covers(bar: number, beat: number, beatsPerBar: number): boolean {
+    const now = bar * beatsPerBar + beat;
+    let prev = now - 1;
+    while (prev >= 0 && !isAutoKickBeat(prev % beatsPerBar)) prev--;
+    return this.lastBeat >= Math.max(prev, 0) && this.lastBeat <= now;
+  }
+
+  reset(): void {
+    this.lastBeat = -Infinity;
+  }
+}

@@ -562,6 +562,13 @@ function Stage({
   const aspect = stats && stats.width > 0 ? `${stats.width} / ${stats.height}` : '4 / 3';
   const visiblePlayers = players.slice(0, playerCount);
   const assignedPlayers = visiblePlayers.filter((player) => player.instrument !== 'none');
+  const hasDrummer = assignedPlayers.some((player) => player.instrument === 'drums');
+  // Only the drums differ between the modes; guitar and bass play the chart either way.
+  const modeHintText = !hasDrummer
+    ? 'The song picks the notes. Just play in time.'
+    : mode === 'hard'
+      ? 'Drums: each pad plays its own drum.'
+      : 'Drums: hit anywhere in time and the song picks the drum. Green flash = in time, red = off the beat.';
   const hardModeAvailable = assignedPlayers.every((player) =>
     INSTRUMENT_MODES[player.instrument as PlayableInstrumentId].includes('hard'),
   );
@@ -654,6 +661,9 @@ function Stage({
                   Hard
                 </button>
               </div>
+              <p className="hint" style={{ margin: '0.35rem 0 0', fontSize: '0.62rem', lineHeight: 1.35 }}>
+                {modeHintText}
+              </p>
             </div>
           </div>
 

@@ -86,6 +86,19 @@ export interface Config {
     kit: Record<string, KitPad>;
     /** One hand cannot fire twice within this long, whatever the pad (one big stroke through two stacked lines). */
     trackRefractoryMs: number;
+    /** What the drummer is shown about a hit while a song runs; drawn inside that player's part of the screen. */
+    feedback: {
+      /** Outline the player's side green for a hit in time, red for one that is not. */
+      enabled: boolean;
+      /** "In time" = within this many eighth notes of an eighth-note slot, each side (0.5 = always green). */
+      window: number;
+      /** How long the outline takes to fade (ms). */
+      flashMs: number;
+      /** Judge hard-mode hits too (off: fills and sixteenths would read as wrong). */
+      hardMode: boolean;
+      /** Easy mode: light the pad that sounded, not the one that was struck. */
+      soundedPad: boolean;
+    };
     /** The kit is `layout` around an anchor the player can place (C, then C again). `?drum.bodyRelative=false` = the fixed `kit`. */
     bodyRelative: boolean;
     /** The body-relative kit, keyed by sample name. X-ranges touch but never overlap. */
@@ -263,6 +276,7 @@ export const DEFAULT_CONFIG: Config = {
       kick: { x0: 0.48, x1: 0.65, y: 0.85 },
     },
     trackRefractoryMs: 120,
+    feedback: { enabled: true, window: 0.3, flashMs: 320, hardMode: false, soundedPad: true },
     bodyRelative: true,
     // Symmetric around the anchor so it packs into half a frame; the kick is the spacebar and the auto kick.
     layout: {

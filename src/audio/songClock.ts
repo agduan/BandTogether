@@ -24,6 +24,8 @@ export interface SongClockOptions {
   chordAtBar?: (bar: number) => ChordName;
   /** Called exactly once at the start of each real (non-count-in) bar, before its chord is read. */
   onBar?: (bar: number, time: number) => void;
+  /** Asked before every auto kick: true = stay silent, the player is playing this one (see `KickCover`). */
+  skipAutoKick?: (bar: number, beat: number, beatsPerBar: number) => boolean;
 }
 
 /** One eighth-note step of the clock, handed to `onStep` listeners with the audio time it sounds at. */
@@ -180,7 +182,7 @@ export class SongClock {
   private onBeat(time: number, { bar, beat, countIn }: GridStep, chord: ChordName): void {
     const clicks = countIn || (this.opts.click && !this.opts.carried?.());
     if (clicks) this.click?.triggerAttackRelease(beat === 0 ? 'C6' : 'G5', '32n', time, beat === 0 ? 0.6 : 0.35);
-    if (!countIn && this.opts.autoKick && isAutoKickBeat(beat)) {
+    if (!countIn && this.opts.autoKick && isAutoKickBeat(beat) && !this.opts.skipAutoKick?.(bar, beat, this.beatsPerBar)) {
       this.opts.kickVoice?.()?.trigger({ sample: 'kick', velocity: this.opts.kickVelocity?.() ?? 0.85 }, time);
     }
 

@@ -1,6 +1,6 @@
 import type { ToneAudioNode } from 'tone';
 import type { Config } from './config';
-import type { ChordName, Detector, Instrument, InstrumentId, PlayerId, PlayMode, SongContext, TrackId, VisionFrame } from '@/core/types';
+import type { ChordName, Detector, DrumHitEvent, OverlayLayer, Instrument, InstrumentId, PlayerId, PlayMode, SongContext, TrackId, VisionFrame } from '@/core/types';
 import type { InstrumentView } from '@/core/views';
 import { DrumsVoice } from '@/audio/voices/drumsVoice';
 import { BassVoice } from '@/audio/voices/bassVoice';
@@ -8,8 +8,10 @@ import { GuitarVoice } from '@/audio/voices/guitarVoice';
 import { BassStrumDetector } from '@/detectors/bassDetector';
 import { BassOverlay } from '@/detectors/bassOverlay';
 import { DebugOverlay } from '@/detectors/debugOverlay';
+import { DrumFeedbackOverlay } from '@/detectors/drumFeedback';
 import { DrumHitDetector, kitZones } from '@/detectors/drumHitDetector';
 import { FULL_FRAME, GuitarStrumDetector, type BandLayout, type PlayerRegion } from '@/detectors/strumDetector';
+import { easyDrumSample, FREEPLAY_CONTEXT } from '@/audio/modes';
 import { createFx, type FxLayer } from '@/render/fxRegistry';
 
 /** Instruments a player can pick, in picker order. */
@@ -36,6 +38,8 @@ export interface InstrumentDeps {
   playerId?: PlayerId;
   /** Song position, for views that show the chart chord. */
   song?: () => SongContext;
+  /** The active play mode, for overlays that explain it (default easy, the app's default). */
+  mode?: () => PlayMode;
   /** The slice of the frame this player owns (default: all of it; the session passes a half when two play). */
   region?: () => PlayerRegion;
 }
@@ -82,8 +86,8 @@ function drumConfigFor(config: Config, detector: DrumHitDetector): Config {
 
 /** Body-relative kit: a default spot inside the player's region; `calibrate` toggles placing it on the player. */
 export function createDrums(deps: InstrumentDeps): Instrument {
-  const { config, output, playerId = 0, region } = deps;
-  const detector = new DrumHitDetector(config, playerId, region);
+  const { config, output, playerId = 0, region = () => FULL_FRAME, song = () => FREEPLAY_CONTEXT, mode = () => 'easy' as PlayMode } = deps;
+  const detector = new DrumHitDetector(config, playerId, deps.region);
   const view = (): InstrumentView => ({
     instrument: 'drums',
     pads: detector.geometry,
@@ -91,18 +95,53 @@ export function createDrums(deps: InstrumentDeps): Instrument {
     calibration: detector.calibration,
   });
   const fx = overlayFor('drums', { ...deps, config: drumConfigFor(config, detector) }, [detector], view);
+  lightSoundedPad(fx, config, song, mode);
+  const feedback = new DrumFeedbackOverlay({
+    config,
+    playerId,
+    song,
+    mode,
+    region,
+    pads: () => detector.geometry,
+    padHalfHeight: () => detector.padHalfHeight,
+  });
   return {
     id: 'drums',
     detectors: [detector],
     voice: new DrumsVoice(output),
     // The fixed layout at 4:3; nobody reads zones, the live pads are in the view.
     zones: kitZones(config.drum, 4 / 3),
-    overlay: fx,
+    overlay: <OverlayLayer & { art: FxLayer; feedback: DrumFeedbackOverlay }>{
+      // The kit art and the feedback drawn over it, kept reachable for tests and the debug panel.
+      art: fx,
+      feedback,
+      draw: (ctx, frame, toPx) => {
+        fx.draw(ctx, frame, toPx);
+        feedback.draw(ctx, frame, toPx);
+      },
+    },
     view,
     calibrate: (frame) => detector.calibrate(frame),
     resetCalibration: () => detector.resetCalibration(),
-    dispose: () => fx.dispose?.(),
+    dispose: () => {
+      fx.dispose?.();
+      feedback.dispose();
+    },
   };
+}
+
+/**
+ * Easy mode plays the drum the song wants, not the pad that was struck, so
+ * the kit art should light the drum that sounded. `DrumsFx` lights `e.pad`
+ * from its own bus subscription, which calls `this.onHit`; shadowing that
+ * method on the instance hands it the sounded pad without an edit in
+ * src/render. Art without an `onHit` is left alone.
+ */
+function lightSoundedPad(fx: FxLayer, config: Config, song: () => SongContext, mode: () => PlayMode): void {
+  const art = fx as FxLayer & { onHit?: (e: DrumHitEvent) => void };
+  if (typeof art.onHit !== 'function') return;
+  const struck = art.onHit.bind(art);
+  art.onHit = (e) => struck(config.drum.feedback.soundedPad && mode() === 'easy' ? { ...e, pad: easyDrumSample(e.pad, song()) } : e);
 }
 
 type BandPlacement = Pick<BandLayout, 'bandY' | 'bandXMin' | 'bandXMax'>;

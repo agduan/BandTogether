@@ -1,7 +1,7 @@
 import type { BassStrumEvent, ChordName, DrumHitEvent, NoteResolver, PlayMode, SongContext, StringSound, StrumEvent } from '@/core/types';
 import { chordTones, FREEPLAY_LOOP, midiToNote, STRING_COUNT, voicingFor } from '@/song/chords';
 import { BASS_LOWEST } from './backing';
-import { grooveRole } from './groove';
+import { grooveRole, type KickCover } from './groove';
 
 /**
  * Note resolvers ("modes"). A resolver turns a gesture event into the concrete
@@ -101,6 +101,12 @@ export class HardMode implements NoteResolver {
   }
 }
 
+/** The drum an easy-mode hit on `pad` sounds at this song position. Pure, so the overlay can ask too. */
+export function easyDrumSample(pad: string, song: SongContext): string {
+  if (pad === 'kick' || song.bpm <= 0) return pad;
+  return grooveRole(song.beat + song.beatPhase, song.beatsPerBar, song.bar);
+}
+
 /**
  * Easy mode: the song decides what you hear. A drum hit anywhere plays the
  * drum the groove wants at the current beat position (see `grooveRole`), so
@@ -113,9 +119,13 @@ export class EasyMode implements NoteResolver {
   readonly id: PlayMode = 'easy';
   private readonly freeplay = new FreeplayChords();
 
+  /** `kicks`: told about every kick the player lands, so the clock's auto kick can step aside (see `KickCover`). */
+  constructor(private readonly kicks?: KickCover) {}
+
   resolveDrum(e: DrumHitEvent, song: SongContext): { sample: string; velocity: number } {
-    if (e.pad === 'kick' || song.bpm <= 0) return { sample: e.pad, velocity: e.velocity };
-    return { sample: grooveRole(song.beat + song.beatPhase, song.beatsPerBar, song.bar), velocity: e.velocity };
+    const sample = easyDrumSample(e.pad, song);
+    if (sample === 'kick' && song.bpm > 0) this.kicks?.notePlayerKick(song);
+    return { sample, velocity: e.velocity };
   }
 
   resolveStrum(e: StrumEvent, song: SongContext): StringSound {
@@ -127,6 +137,6 @@ export class EasyMode implements NoteResolver {
   }
 }
 
-export function createResolver(mode: PlayMode): NoteResolver & { id: PlayMode } {
-  return mode === 'easy' ? new EasyMode() : new HardMode();
+export function createResolver(mode: PlayMode, kicks?: KickCover): NoteResolver & { id: PlayMode } {
+  return mode === 'easy' ? new EasyMode(kicks) : new HardMode();
 }

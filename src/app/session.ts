@@ -14,6 +14,7 @@ import { BackingBand, partPlayedBy, type BackingPart } from '@/audio/backing';
 import { AudioEngine } from '@/audio/engine';
 import { createResolver, FREEPLAY_CONTEXT, strumChord } from '@/audio/modes';
 import { SingerChannel, type MicrophoneInfo } from '@/audio/singer';
+import { KickCover } from '@/audio/groove';
 import { SongClock, type ClockStep } from '@/audio/songClock';
 import { GuitarVoice } from '@/audio/voices/guitarVoice';
 import type { InstrumentId, PlayerId, PlayMode, SongContext, Voice } from '@/core/types';
@@ -69,6 +70,8 @@ export class Session {
   /** Players the UI has not named since the last `setNumPlayers` (see there). */
   private unconfirmed: Set<PlayerId> | null = null;
   private songClock: SongClock | null = null;
+  /** Which easy-mode kicks the players landed themselves; the auto kick skips those. Shared by every drummer. */
+  private readonly kickCover = new KickCover();
   readonly stats: SessionStats = {
     fps: 0,
     inferenceMs: 0,
@@ -124,6 +127,7 @@ export class Session {
       output: () => this.playerOutput(playerId),
       playerId,
       song: () => this.songContext(),
+      mode: () => this.mode,
       // Read live: going from one player to two squeezes everything into its half at once.
       region: () => regionFor(playerId, this.config.players.count),
     });
@@ -131,7 +135,7 @@ export class Session {
     const controller = new InstrumentController({
       playerId,
       instrument,
-      resolver: createResolver(this.config.play.mode),
+      resolver: createResolver(this.config.play.mode, this.kickCover),
       audio: this.audio,
       song: () => this.songContext(),
     });
@@ -380,7 +384,7 @@ export class Session {
 
   setMode(mode: PlayMode): void {
     this.config.play.mode = mode;
-    for (const c of this.players) c.resolver = createResolver(mode);
+    for (const c of this.players) c.resolver = createResolver(mode, this.kickCover);
   }
 
   get songRunning(): boolean {
@@ -395,6 +399,7 @@ export class Session {
   startSong(songId = this.config.play.song): void {
     if (this.audio.state !== 'running') return;
     this.stopSong();
+    this.kickCover.reset();
     this.config.play.song = songId;
     this.singingFreely = songId === SING_FREELY_ID;
     this.singer.setHarmonyActive(this.singingFreely);
@@ -406,6 +411,7 @@ export class Session {
       autoKick: !this.singingFreely && play.autoKick && this.mode === 'easy',
       kickVoice: () => this.kickVoice(),
       kickVelocity: () => this.config.backing.autoKickVelocity,
+      skipAutoKick: (bar, beat, beatsPerBar) => this.kickCover.covers(bar, beat, beatsPerBar),
       carried: () => this.backingOn,
       chordAtBar: this.singingFreely ? () => this.singer.harmonizer.chord : undefined,
       onBar: this.singingFreely ? () => void this.singer.harmonizer.chooseChord() : undefined,

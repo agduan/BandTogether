@@ -49,7 +49,7 @@ describe('instrument registry', () => {
     const half = (x0: number, x1: number) => () => ({ x0, x1 });
     const p0 = createInstrument('drums', { ...d, playerId: 0, region: half(0, 0.5) });
     const p1 = createInstrument('drums', { ...d, playerId: 1, region: half(0.5, 1) });
-    expect(p0.overlay).toBeInstanceOf(DrumsFx);
+    expect((p0.overlay as unknown as { art: unknown }).art).toBeInstanceOf(DrumsFx);
     expect(p0.view?.()).toMatchObject({ instrument: 'drums', calibration: 'locked' }); // the default kit stays put
 
     const ASPECT = 4 / 3;
