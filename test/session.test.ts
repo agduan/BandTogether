@@ -242,13 +242,13 @@ describe('Session seams', () => {
     expect(s.info().song).toMatchObject({ chord: null, nextChord: null, running: false });
 
     // Stand in for a running song clock (the real one needs an audio context).
-    const song = getSong('perfect'); // verse G Em C D | chorus G Em C D
+    const song = getSong('stand-by-me'); // verse G Em C D | chorus G Em C D
     let bar = 0;
     let countIn = false;
     const context = (): SongContext => ({ ...FREEPLAY_CONTEXT, bpm: song.bpm, bar, beat: 2, beatPhase: 0.5, countIn, chord: song.sections[0].bars[bar % 4].chord });
     (s as unknown as { songClock: unknown }).songClock = { song, running: true, beatsPerBar: 4, context, opts: {}, dispose() {} };
 
-    expect(s.info().song).toMatchObject({ title: 'Perfect', running: true, chord: 'G', nextChord: 'Em', section: 'verse' });
+    expect(s.info().song).toMatchObject({ title: 'Stand By Me', running: true, chord: 'G', nextChord: 'Em', section: 'verse' });
     expect(s.info().song).toMatchObject({ beat: 2, beatPhase: 0.5, countIn: { active: false, beat: 0, beats: 4 } });
     // During the count-in the chart sits at its top and the position moves to `countIn`.
     countIn = true;

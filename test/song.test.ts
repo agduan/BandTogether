@@ -2,16 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { EasyMode, FREEPLAY_CONTEXT, HardMode, createResolver } from '@/audio/modes';
 import { grooveRole, isAutoKickBeat, positionAt } from '@/audio/groove';
 import type { DrumHitEvent, SongContext } from '@/core/types';
+import { voicingFor } from '@/song/chords';
 import { SONGS, getSong } from '@/song/songs';
 import { barCount, chordAtBar, flattenBars, parseSong } from '@/song/types';
 
-const ALLOWED_CHORDS = new Set(['G', 'C', 'D', 'Em', 'Am', 'A']);
-
 describe('song schema and lookups', () => {
-  it('built-in songs validate and only use supported guitar voicings', () => {
+  it('built-in songs validate and every chart chord can be played', () => {
     for (const song of Object.values(SONGS)) {
       expect(() => parseSong(song)).not.toThrow();
-      for (const bar of flattenBars(song)) expect(ALLOWED_CHORDS.has(bar.chord)).toBe(true);
+      for (const bar of flattenBars(song)) expect(voicingFor(bar.chord), `${song.title}: ${bar.chord}`).not.toBeNull();
     }
     expect(getSong('nope').title).toBe(getSong('viva-la-vida').title);
   });

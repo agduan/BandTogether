@@ -1,7 +1,7 @@
 import type { Song } from '@/core/types';
 import { parseSong } from '../types';
 
-/** Compact, lyric-free charts for the three songs offered by the product UI. */
+/** Compact, lyric-free charts for the songs offered by the product UI. */
 const VIVA_LA_VIDA: Song = parseSong({
   title: 'Viva la Vida',
   bpm: 138,
@@ -25,9 +25,10 @@ const COUNTING_STARS: Song = parseSong({
   ],
 });
 
-const PERFECT: Song = parseSong({
-  title: 'Perfect',
-  bpm: 95,
+/** Doo-wop I-vi-IV-V, the same loop from the first bar to the last. Transposed to G from the recorded A. */
+const STAND_BY_ME: Song = parseSong({
+  title: 'Stand By Me',
+  bpm: 118,
   key: 'G',
   timeSig: [4, 4],
   sections: [
@@ -36,10 +37,71 @@ const PERFECT: Song = parseSong({
   ],
 });
 
+/** i-bVII-bVI in the recorded C minor. Every chord is a built barre shape; no transposition buys an open one. */
+const ROLLING_IN_THE_DEEP: Song = parseSong({
+  title: 'Rolling in the Deep',
+  bpm: 105,
+  key: 'Cm',
+  timeSig: [4, 4],
+  sections: [
+    { name: 'verse', bars: [{ chord: 'Cm' }, { chord: 'Bb' }, { chord: 'Ab' }, { chord: 'Ab' }] },
+    { name: 'chorus', bars: [{ chord: 'Cm' }, { chord: 'Bb' }, { chord: 'Ab' }, { chord: 'Ab' }] },
+  ],
+});
+
+/** I-V-vi-IV in the recorded A, one chord per bar from the first to the last: the closest fit to this chart format there is. */
+const SOMEONE_LIKE_YOU: Song = parseSong({
+  title: 'Someone Like You',
+  bpm: 67,
+  key: 'A',
+  timeSig: [4, 4],
+  sections: [
+    { name: 'verse', bars: [{ chord: 'A' }, { chord: 'E' }, { chord: 'F#m' }, { chord: 'D' }] },
+    { name: 'chorus', bars: [{ chord: 'A' }, { chord: 'E' }, { chord: 'F#m' }, { chord: 'D' }] },
+  ],
+});
+
+/** The record is in Db; C is the shape set guitarists actually play it in, a semitone down. */
+const MR_BRIGHTSIDE: Song = parseSong({
+  title: 'Mr. Brightside',
+  bpm: 148,
+  key: 'C',
+  timeSig: [4, 4],
+  sections: [
+    { name: 'verse', bars: [{ chord: 'C' }, { chord: 'F' }, { chord: 'Am' }, { chord: 'G' }] },
+    { name: 'chorus', bars: [{ chord: 'C' }, { chord: 'F' }, { chord: 'Am' }, { chord: 'G' }] },
+  ],
+});
+
+/**
+ * One 8-bar circle of fifths in the recorded A minor, start to finish. Bar 6 is
+ * a Bm7b5 on the record; `chordTones` only builds major and minor triads, so it
+ * is charted as the Dm that shares three of its four notes and keeps the F natural.
+ */
+const I_WILL_SURVIVE: Song = parseSong({
+  title: 'I Will Survive',
+  bpm: 117,
+  key: 'Am',
+  timeSig: [4, 4],
+  sections: [
+    {
+      name: 'loop',
+      bars: [
+        { chord: 'Am' }, { chord: 'Dm' }, { chord: 'G' }, { chord: 'C' },
+        { chord: 'F' }, { chord: 'Dm' }, { chord: 'E' }, { chord: 'E' },
+      ],
+    },
+  ],
+});
+
 export const SONGS: Record<string, Song> = {
   'viva-la-vida': VIVA_LA_VIDA,
   'counting-stars': COUNTING_STARS,
-  perfect: PERFECT,
+  'stand-by-me': STAND_BY_ME,
+  'rolling-in-the-deep': ROLLING_IN_THE_DEEP,
+  'someone-like-you': SOMEONE_LIKE_YOU,
+  'mr-brightside': MR_BRIGHTSIDE,
+  'i-will-survive': I_WILL_SURVIVE,
 };
 
 export const DEFAULT_SONG_ID = 'viva-la-vida';

@@ -19,9 +19,9 @@ const onChart = (chord: string): SongContext => ({ ...FREEPLAY_CONTEXT, bpm: 120
 const SPREAD = { spreadMinMs: 4, spreadMaxMs: 20, humanizeMs: 0 };
 
 describe('chord voicings', () => {
-  it('every chord in every built-in chart has a hand-written voicing', () => {
+  it('every chord in every built-in chart resolves to a voicing, and free play stays on open shapes', () => {
     for (const song of Object.values(SONGS)) {
-      for (const bar of flattenBars(song)) expect(VOICINGS[bar.chord], `${song.title}: ${bar.chord}`).toBeDefined();
+      for (const bar of flattenBars(song)) expect(voicingFor(bar.chord), `${song.title}: ${bar.chord}`).not.toBeNull();
     }
     for (const chord of FREEPLAY_LOOP) expect(VOICINGS[chord]).toBeDefined();
   });
@@ -32,12 +32,17 @@ describe('chord voicings', () => {
     expect(VOICINGS.Em[0]).toBe('E2');
   });
 
-  it('an unlisted chord still sounds: nearest open shape, else a built triad', () => {
+  it('an unlisted chord still sounds: nearest open shape, else a built barre', () => {
     expect(voicingFor('Em7')).toBe(VOICINGS.Em);
     expect(voicingFor('G/B')).toBe(VOICINGS.G);
-    expect(voicingFor('F')).toEqual([null, 'F2', 'C3', 'F3', 'A3', 'C4']);
+    // E shape, six strings, for roots up to G#...
+    expect(voicingFor('F')).toEqual(['F2', 'C3', 'F3', 'A3', 'C4', 'F4']);
+    expect(voicingFor('F#m')).toEqual(['F#2', 'C#3', 'F#3', 'A3', 'C#4', 'F#4']);
+    expect(voicingFor('Ab')).toEqual(['G#2', 'D#3', 'G#3', 'C4', 'D#4', 'G#4']);
+    // ...A shape, sixth string muted, from A up.
     expect(voicingFor('Bm')).toEqual([null, 'B2', 'F#3', 'B3', 'D4', 'F#4']);
     expect(voicingFor('Bb')).toEqual([null, 'A#2', 'F3', 'A#3', 'D4', 'F4']);
+    expect(voicingFor('Cm')).toEqual([null, 'C3', 'G3', 'C4', 'D#4', 'G4']);
     expect(voicingFor('N.C.')).toBeNull();
   });
 
