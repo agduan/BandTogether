@@ -1,6 +1,6 @@
 import * as Tone from 'tone';
 import type { Config } from '@/app/config';
-import type { StringSound, Voice } from '@/core/types';
+import type { ChordName, StringSound, Voice } from '@/core/types';
 import { midiToNote, noteToMidi } from '@/song/chords';
 import { velocityToGain } from '../latencyMeter';
 
@@ -49,6 +49,7 @@ export class BassVoice implements Voice {
   private loading: Promise<void> | null = null;
   private ringing: Tone.ToneBufferSource | null = null;
   private lastNote: string | null = null;
+  private lastChord: ChordName | null = null;
 
   constructor(
     private readonly output: () => Tone.ToneAudioNode,
@@ -63,6 +64,11 @@ export class BassVoice implements Voice {
   /** The note that last sounded, e.g. 'G2'. */
   get note(): string | null {
     return this.lastNote;
+  }
+
+  /** The chord of the latest note (the free-play loop has no chart to read it from). */
+  get chord(): ChordName | null {
+    return this.lastChord;
   }
 
   load(): Promise<void> {
@@ -92,6 +98,7 @@ export class BassVoice implements Voice {
     source.start(t0, 0, undefined, velocityToGain(sound.velocities?.[i] ?? 0.8));
     this.ringing = source;
     this.lastNote = plan.note;
+    this.lastChord = sound.chord ?? null;
   }
 
   releaseAll(): void {

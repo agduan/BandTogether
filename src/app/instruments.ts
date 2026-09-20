@@ -1,11 +1,12 @@
 import type { ToneAudioNode } from 'tone';
 import type { Config } from './config';
-import type { Detector, Instrument, InstrumentId, PlayerId, PlayMode, SongContext, TrackId, VisionFrame } from '@/core/types';
+import type { ChordName, Detector, Instrument, InstrumentId, PlayerId, PlayMode, SongContext, TrackId, VisionFrame } from '@/core/types';
 import type { InstrumentView } from '@/core/views';
 import { DrumsVoice } from '@/audio/voices/drumsVoice';
 import { BassVoice } from '@/audio/voices/bassVoice';
 import { GuitarVoice } from '@/audio/voices/guitarVoice';
 import { BassPluckDetector } from '@/detectors/bassDetector';
+import { BassOverlay } from '@/detectors/bassOverlay';
 import { DebugOverlay } from '@/detectors/debugOverlay';
 import { DrumHitDetector, kitZones } from '@/detectors/drumHitDetector';
 import { FULL_FRAME, GuitarStrumDetector, type BandLayout, type PlayerRegion } from '@/detectors/strumDetector';
@@ -58,9 +59,9 @@ export function createInstrument(id: InstrumentId, deps: InstrumentDeps): Instru
   }
 }
 
-/** The registered FX for an instrument, or the debug overlay when there is none. */
-function overlayFor(id: InstrumentId, deps: InstrumentDeps, detectors: Detector[], view: () => InstrumentView | null): FxLayer {
-  return createFx(id, deps.config, deps.playerId ?? 0, view) ?? new DebugOverlay(detectors);
+/** The registered FX for an instrument; when there is none, `fallback`, else the detectors' debug drawing. */
+function overlayFor(id: InstrumentId, deps: InstrumentDeps, detectors: Detector[], view: () => InstrumentView | null, fallback?: () => FxLayer): FxLayer {
+  return createFx(id, deps.config, deps.playerId ?? 0, view) ?? fallback?.() ?? new DebugOverlay(detectors);
 }
 
 /**
@@ -192,13 +193,18 @@ export function createGuitar(deps: InstrumentDeps): Instrument {
   };
 }
 
+/** 'Em7' is 'E', 'F#m' is 'F#': what the bass plays under a chord, for its overlay. */
+function rootName(chord: ChordName | null): string | null {
+  return chord ? (/^[A-G][#b]?/.exec(chord.trim())?.[0] ?? null) : null;
+}
+
 /**
  * A one-note guitar, strum only: every stroke across the bass band, down or
  * up, plays the root of the chart chord (the free-play loop's when no song
  * runs). Placed per player with `calibrate`, like the guitar.
  */
 export function createBass(deps: InstrumentDeps): Instrument {
-  const { config, output, playerId = 0, region = () => FULL_FRAME } = deps;
+  const { config, output, playerId = 0, song, region = () => FULL_FRAME } = deps;
   const slot: BandSlot = { placed: null };
   const detector = new BassPluckDetector(bandConfigFor(config, 'bass', slot), playerId, region);
   const voice = new BassVoice(output, () => config.bass);
@@ -209,8 +215,10 @@ export function createBass(deps: InstrumentDeps): Instrument {
     // No fret-hand bins: the chart picks the note.
     activeBin: null,
     note: voice.note,
+    root: rootName(song?.().chord ?? voice.chord),
   });
-  const fx = overlayFor('bass', deps, [detector], view);
+  // Until render/fxRegistry.ts has bass art, the bass draws its own one-string version of the guitar.
+  const fx = overlayFor('bass', deps, [detector], view, () => new BassOverlay(playerId, view));
   return {
     id: 'bass',
     detectors: [detector],

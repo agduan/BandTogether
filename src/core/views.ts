@@ -66,8 +66,10 @@ export interface BassView {
   neck: NeckGeometry;
   /** Hard mode: bin under the fret hand; null = none. */
   activeBin: number | null;
-  /** Last note played, e.g. 'G1'. */
+  /** Last note played, e.g. 'G2'. */
   note: string | null;
+  /** The root a stroke plays now, without its octave ('G', 'F#'): the chart chord's, or in free play the one that last sounded. */
+  root: string | null;
 }
 
 export type InstrumentView = DrumsView | GuitarView | BassView;

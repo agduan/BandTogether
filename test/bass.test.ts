@@ -7,9 +7,10 @@ import { BASS_LOWEST } from '@/audio/backing';
 import { bassNote, createResolver, EasyMode, FREEPLAY_CONTEXT, HardMode } from '@/audio/modes';
 import { BassVoice, planBassNote } from '@/audio/voices/bassVoice';
 import { bus } from '@/core/bus';
-import type { BassPluckEvent, Instrument, SongContext, VisionFrame } from '@/core/types';
+import type { BassPluckEvent, Instrument, SongContext, Vec2, VisionFrame } from '@/core/types';
 import type { BandGeometry } from '@/core/views';
 import { BassPluckDetector } from '@/detectors/bassDetector';
+import { BassOverlay } from '@/detectors/bassOverlay';
 import { midiToNote, noteToMidi } from '@/song/chords';
 import { SONGS } from '@/song/songs';
 import { flattenBars } from '@/song/types';
@@ -174,5 +175,80 @@ describe('bass instrument end to end', () => {
     expect(bandOf(p1).y).toBeCloseTo(0.8);
     // A player cannot calibrate off the other player's hand.
     expect(p0.calibrate?.(frameWith(handAt(2, { x: mid + 0.2, y: 0.8 }, 1000, 0, { playerId: 1 })))).toBe(false);
+  });
+});
+
+/** A canvas that records the polyline drawn with the widest stroke (the string) and every text. */
+function fakeCtx() {
+  const texts: string[] = [];
+  const paths: { width: number; ys: number[] }[] = [];
+  let ys: number[] = [];
+  const target: Record<string, unknown> = {
+    beginPath: () => void (ys = []),
+    moveTo: (_x: number, y: number) => ys.push(y),
+    lineTo: (_x: number, y: number) => ys.push(y),
+    stroke: () => paths.push({ width: target.lineWidth as number, ys }),
+    fillText: (text: string) => texts.push(text),
+  };
+  const ctx = new Proxy(target, { get: (t, p) => t[p as string] ?? (() => {}), set: (t, p, v) => ((t[p as string] = v), true) });
+  const string = () => paths.filter((p) => p.ys.length > 20).at(-1)!;
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, texts, string };
+}
+
+describe('bass overlay', () => {
+  const toPx = (v: Vec2): Vec2 => ({ x: v.x * 480, y: v.y * 480 });
+  const at = (t: number): VisionFrame => ({ t, aspect: ASPECT, hands: [], inferenceMs: 0 });
+  const swing = (ys: number[]) => Math.max(...ys) - Math.min(...ys);
+
+  it('with no bass art registered the bass draws its own string: idle it is straight and says where to strum', () => {
+    const bass = createInstrument('bass', deps({ song: () => onChart('Em') }));
+    expect(bass.overlay).toBeInstanceOf(BassOverlay);
+    const { ctx, texts, string } = fakeCtx();
+    bass.overlay.draw(ctx, at(1000), toPx);
+    expect(swing(string().ys)).toBe(0);
+    expect(string().ys[0]).toBeCloseTo(DEFAULT_CONFIG.bass.bandY * 480);
+    expect(texts).toEqual(['STRUM HERE', 'E']); // the pill shows the root a stroke plays, not the chord
+    bass.dispose?.();
+  });
+
+  it('a stroke of this player makes the string swing and glow, harder strokes swing further, and it dies away', () => {
+    const bass = createInstrument('bass', deps({ playerId: 1 }));
+    const overlay = bass.overlay as BassOverlay;
+    bus.emit(pluck('down', { t: 1000, playerId: 0 })); // somebody else's
+    expect(overlay.glowAt(1010)).toBe(0);
+
+    const swingAfter = (velocity: number) => {
+      bus.emit(pluck('down', { t: 1000, playerId: 1, velocity }));
+      const { ctx, texts, string } = fakeCtx();
+      overlay.draw(ctx, at(1010), toPx);
+      expect(texts).not.toContain('STRUM HERE'); // the arrow takes its place while the stroke shows
+      return swing(string().ys);
+    };
+    const soft = swingAfter(0.4);
+    const hard = swingAfter(1);
+    expect(soft).toBeGreaterThan(0.5);
+    expect(hard).toBeGreaterThan(soft * 1.5);
+    expect(overlay.glowAt(1010)).toBeGreaterThan(0.9);
+    expect(overlay.glowAt(1220)).toBeCloseTo(0.5);
+
+    const late = fakeCtx();
+    overlay.draw(late.ctx, at(1600), toPx);
+    expect(swing(late.string().ys)).toBe(0);
+    expect(late.texts).toContain('STRUM HERE');
+    expect(overlay.glowAt(990)).toBe(1); // an injected stroke is stamped slightly ahead of the frame being drawn
+    expect(overlay.glowAt(100)).toBe(0); // a looping replay's clock runs backwards
+
+    // Swapped out: it stops listening.
+    bass.dispose?.();
+    bus.emit(pluck('up', { t: 3000, playerId: 1 }));
+    expect(overlay.glowAt(3010)).toBe(0);
+  });
+
+  it('follows the band the player placed', () => {
+    const bass = createInstrument('bass', deps());
+    bass.calibrate?.(frameWith(handAt(1, { x: 0.5 * ASPECT, y: 0.75 }, 1000, 0)));
+    const { ctx, string } = fakeCtx();
+    bass.overlay.draw(ctx, at(1000), toPx);
+    expect(string().ys[0]).toBeCloseTo(0.75 * 480);
   });
 });
