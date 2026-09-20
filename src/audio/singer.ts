@@ -3,6 +3,7 @@ import type { ToneAudioNode } from 'tone';
 import type { Config } from '@/app/config';
 import { bus } from '@/core/bus';
 import type { SingerInfo } from '@/app/sessionInfo';
+import { detectPitch, SingingHarmonizer } from './harmonizer';
 
 export interface MicrophoneInfo {
   deviceId: string;
@@ -15,10 +16,14 @@ export interface MicrophoneInfo {
  * through `session.singer`.
  */
 export class SingerChannel {
+  readonly harmonizer = new SingingHarmonizer();
   private isEnabled = false;
   private lastError: string | null = null;
   private stream: MediaStream | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
+  private analyser: AnalyserNode | null = null;
+  private analysisBuffer: Float32Array<ArrayBuffer> | null = null;
+  private analysisTimer: ReturnType<typeof setInterval> | null = null;
   private inputGain: Tone.Gain | null = null;
   private echo: Tone.FeedbackDelay | null = null;
   private reverb: Tone.Reverb | null = null;
@@ -103,7 +108,17 @@ export class SingerChannel {
     if (this.reverb) this.reverb.wet.value = this.config.reverb;
   }
 
+  setHarmonyActive(active: boolean): void {
+    this.harmonizer.setActive(active);
+  }
+
+  /** null = estimate the major key from the melody. */
+  setHarmonyKey(key: string | null): void {
+    this.harmonizer.setKeyOverride(key);
+  }
+
   info(): SingerInfo {
+    const harmony = this.harmonizer.snapshot();
     return {
       enabled: this.enabled,
       available: this.available,
@@ -112,6 +127,7 @@ export class SingerChannel {
       reverb: this.config.reverb,
       deviceId: this.deviceId,
       error: this.error,
+      harmony,
     };
   }
 
@@ -141,6 +157,7 @@ export class SingerChannel {
 
     let stream: MediaStream | null = null;
     let source: MediaStreamAudioSourceNode | null = null;
+    let analyser: AnalyserNode | null = null;
     let inputGain: Tone.Gain | null = null;
     let echo: Tone.FeedbackDelay | null = null;
     let reverb: Tone.Reverb | null = null;
@@ -153,7 +170,14 @@ export class SingerChannel {
         return;
       }
 
-      source = (Tone.getContext().rawContext as AudioContext).createMediaStreamSource(stream);
+      const rawContext = Tone.getContext().rawContext as AudioContext;
+      source = rawContext.createMediaStreamSource(stream);
+      if (typeof rawContext.createAnalyser === 'function') {
+        analyser = rawContext.createAnalyser();
+        analyser.fftSize = 4096;
+        analyser.smoothingTimeConstant = 0;
+        source.connect(analyser);
+      }
       inputGain = new Tone.Gain(this.config.gain);
       echo = new Tone.FeedbackDelay({ delayTime: 0.22, feedback: 0.28, wet: this.config.echo });
       reverb = new Tone.Reverb({ decay: 1.8, preDelay: 0.01, wet: this.config.reverb });
@@ -165,6 +189,8 @@ export class SingerChannel {
 
       this.stream = stream;
       this.source = source;
+      this.analyser = analyser;
+      this.analysisBuffer = analyser ? new Float32Array(analyser.fftSize) : null;
       this.inputGain = inputGain;
       this.echo = echo;
       this.reverb = reverb;
@@ -172,8 +198,10 @@ export class SingerChannel {
       this.isEnabled = true;
       this.config.enabled = true;
       this.config.deviceId = this.deviceId;
+      if (analyser) this.startAnalysis(rawContext.sampleRate);
     } catch (error) {
       source?.disconnect();
+      analyser?.disconnect();
       stopStream(stream);
       meter?.dispose();
       reverb?.dispose();
@@ -192,6 +220,11 @@ export class SingerChannel {
 
   private close(): void {
     this.isEnabled = false;
+    if (this.analysisTimer !== null) clearInterval(this.analysisTimer);
+    this.analysisTimer = null;
+    this.analysisBuffer = null;
+    this.analyser?.disconnect();
+    this.analyser = null;
     this.source?.disconnect();
     this.source = null;
     stopStream(this.stream);
@@ -204,6 +237,19 @@ export class SingerChannel {
     this.echo = null;
     this.inputGain?.dispose();
     this.inputGain = null;
+  }
+
+  private startAnalysis(sampleRate: number): void {
+    if (this.analysisTimer !== null) clearInterval(this.analysisTimer);
+    this.analysisTimer = setInterval(() => {
+      const analyser = this.analyser;
+      const buffer = this.analysisBuffer;
+      if (!analyser || !buffer || !this.harmonizer.active) return;
+      analyser.getFloatTimeDomainData(buffer);
+      const estimate = detectPitch(buffer, sampleRate);
+      if (estimate) this.harmonizer.observe(estimate);
+      else this.harmonizer.observeSilence();
+    }, 50);
   }
 }
 

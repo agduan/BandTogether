@@ -20,6 +20,10 @@ export interface SongClockOptions {
   kickVoice?: () => Voice | null;
   /** Read on every kick, so it can be tuned live. */
   kickVelocity?: () => number;
+  /** Optional live chord source. Omit it for the song's programmed chart. */
+  chordAtBar?: (bar: number) => ChordName;
+  /** Called exactly once at the start of each real (non-count-in) bar, before its chord is read. */
+  onBar?: (bar: number, time: number) => void;
 }
 
 /** One eighth-note step of the clock, handed to `onStep` listeners with the audio time it sounds at. */
@@ -147,7 +151,7 @@ export class SongClock {
       bar: p.bar,
       beat: p.beat,
       beatPhase: p.beatPhase,
-      chord: chordAtBar(song, p.bar),
+      chord: this.activeChord(p.bar),
       key: song.key,
       countIn: p.countIn,
     };
@@ -155,17 +159,22 @@ export class SongClock {
 
   private step(time: number): void {
     const s = stepAt(this.stepCount++, this.beatsPerBar, this.countInBeats);
-    const chord = chordAtBar(this.song, s.bar);
+    if (!s.countIn && s.beat === 0 && s.sub === 0) this.opts.onBar?.(s.bar, time);
+    const chord = this.activeChord(s.bar);
     if (s.sub === 0) this.onBeat(time, s, chord);
     if (this.listeners.size === 0) return;
     const step: ClockStep = {
       ...s,
       beatsPerBar: this.beatsPerBar,
       chord,
-      nextChord: chordAtBar(this.song, s.countIn ? 0 : s.bar + 1),
+      nextChord: this.activeChord(s.countIn ? 0 : s.bar + 1),
       stepSec: 30 / this.song.bpm,
     };
     for (const cb of this.listeners) cb(step, time);
+  }
+
+  private activeChord(bar: number): ChordName {
+    return this.opts.chordAtBar?.(bar) ?? chordAtBar(this.song, bar);
   }
 
   private onBeat(time: number, { bar, beat, countIn }: GridStep, chord: ChordName): void {

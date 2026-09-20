@@ -21,6 +21,12 @@ describe('song schema and lookups', () => {
     expect(() => parseSong({ title: 'x', bpm: 100, key: 'G', timeSig: [4], sections: [{ name: 'a', bars: [{ chord: 'G' }] }] })).toThrow();
   });
 
+  it('stores transposed starting vocal cues in concert pitch', () => {
+    expect(getSong('viva-la-vida').vocalCue).toEqual({ pitch: 'B3', lyric: 'I used to…', chord: 'Em' });
+    expect(getSong('counting-stars').vocalCue).toEqual({ pitch: 'A3', lyric: 'Lately, I’ve been…', chord: 'Em' });
+    expect(getSong('stand-by-me').vocalCue).toEqual({ pitch: 'B3', lyric: 'When the night…', chord: 'G' });
+  });
+
   it('flattens sections in order and loops the chord lookup', () => {
     const song = getSong('counting-stars');
     expect(barCount(song)).toBe(8);
