@@ -1,10 +1,10 @@
 # Band Together
 
-**Play it in the browser: https://agduan.github.io/BandTogether/** (Chrome on a laptop with a webcam works best.)
+**Play it in the browser: https://agduan.github.io/BandTogether/** (Chrome on a laptop with a webcam works best)
 
-A browser air band for HackMIT 2026. A webcam and an on-device hand-tracking model let one or two people play guitar, bass and drums in the air, with the instruments and the song's chords drawn over the live video. Anyone can sing along through the microphone, and a generated backing band fills in every part nobody is playing, so a single player still sounds like a full band.
+A browser air band for HackMIT 2026. A webcam and an on-device hand-tracking model let one or two people play guitar, bass and drums in the air, with instruments and the song's chords drawn over the live video. Anyone can sing along through the microphone. If you are lonely, a generated backing band fills in every part nobody is playing :)
 
-No instrument, no controller, no account and no backend. Everything runs in the page.
+Everything runs in the page: no instrument, no controller, no account, and no backend!
 
 ## How it plays
 
