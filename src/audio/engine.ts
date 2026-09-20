@@ -20,7 +20,8 @@ export class AudioEngine {
   state: AudioState = 'idle';
   readonly latency = new LatencyMeter();
   private master: Tone.Gain | null = null;
-  private readonly voices = new Map<string, Voice>();
+  /** Every registered voice. A set, not a map by instrument: two players may hold the same instrument. */
+  private readonly voices = new Set<Voice>();
   private gestureCleanup: (() => void) | null = null;
 
   constructor(private readonly config: Config['audio']) {}
@@ -31,7 +32,7 @@ export class AudioEngine {
       this.state = 'loading';
       Tone.setContext(new Tone.Context({ latencyHint: this.config.latencyHint, lookAhead: this.config.lookAhead }));
       this.master = new Tone.Gain(this.config.masterGain).toDestination();
-      await Promise.all([...this.voices.values()].map((v) => v.load()));
+      await Promise.all([...this.voices].map((v) => v.load()));
     }
     try {
       await Tone.start();
@@ -44,7 +45,7 @@ export class AudioEngine {
 
   /** Register a voice; call before or after start (it loads either way). */
   async addVoice(voice: Voice): Promise<void> {
-    this.voices.set(voice.id, voice);
+    this.voices.add(voice);
     if (this.state !== 'idle' && this.state !== 'error') await voice.load();
   }
 
@@ -52,7 +53,7 @@ export class AudioEngine {
   removeVoice(voice: Voice): void {
     voice.releaseAll();
     voice.dispose?.();
-    if (this.voices.get(voice.id) === voice) this.voices.delete(voice.id);
+    this.voices.delete(voice);
   }
 
   get output(): Tone.Gain {
@@ -73,7 +74,7 @@ export class AudioEngine {
   stop(): void {
     this.gestureCleanup?.();
     this.gestureCleanup = null;
-    for (const v of this.voices.values()) v.releaseAll();
+    for (const v of this.voices) v.releaseAll();
     this.master?.dispose();
     this.master = null;
     this.state = 'idle';

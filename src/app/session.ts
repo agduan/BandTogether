@@ -5,7 +5,9 @@ import { HandTracker } from '@/vision/handLandmarker';
 import { FrameAdapter } from '@/vision/frameAdapter';
 import { LM, type VisionFrame } from '@/core/types';
 import { bus } from '@/core/bus';
+import type { CalibrationState } from '@/core/views';
 import { Overlay } from '@/render/overlay';
+import { MAX_PLAYERS, PlayerAssigner, regionFor } from '@/vision/players';
 import { Recorder, Replayer, type Recording, type ReplayerOptions } from '@/vision/recorder';
 import { BackingBand, partPlayedBy, type BackingPart } from '@/audio/backing';
 import { AudioEngine } from '@/audio/engine';
@@ -40,7 +42,10 @@ const HAND_COLORS = ['#ff5c8a', '#5cd6ff', '#ffd75c', '#8aff5c'];
  * controllers (detectors → bus → mode → voice) → overlay, on the video frame
  * loop. One controller per player who holds an instrument. A new session has
  * none: it is just the camera picture until the UI calls `setInstrument`, and
- * `setInstrument(null)` goes back to that. The UI reads state from `info()`.
+ * `setInstrument(null)` goes back to that. With two players, player 0 owns the
+ * screen-left half and player 1 the right one (vision/players.ts): hands,
+ * instruments and calibration all follow that split. The UI reads state from
+ * `info()`.
  */
 export class Session {
   readonly camera: Camera;
@@ -50,7 +55,7 @@ export class Session {
   readonly backing: BackingBand;
   readonly hud: Hud;
   /** Index = player id; null = that player holds no instrument ("None": they only watch or sing). */
-  private readonly slots: (InstrumentController | null)[] = [null];
+  private readonly slots: (InstrumentController | null)[];
   /** Players the UI has not named since the last `setNumPlayers` (see there). */
   private unconfirmed: Set<PlayerId> | null = null;
   private songClock: SongClock | null = null;
@@ -85,6 +90,8 @@ export class Session {
     this.camera = new Camera(video);
     this.overlay = new Overlay(canvas);
     this.config = config;
+    config.players.count = clampPlayers(config.players.count);
+    this.slots = Array.from({ length: config.players.count }, () => null);
     this.adapter = new FrameAdapter(config);
     this.audio = new AudioEngine(config.audio);
     this.singer = new SingerChannel(config.singer, () => this.audio.output);
@@ -113,6 +120,8 @@ export class Session {
       output: () => this.audio.output,
       playerId,
       song: () => this.songContext(),
+      // Read live: going from one player to two squeezes everything into its half at once.
+      region: () => regionFor(playerId, this.config.players.count),
     });
     void this.audio.addVoice(instrument.voice);
     const controller = new InstrumentController({
@@ -129,7 +138,8 @@ export class Session {
   /**
    * Give a player an instrument, swap it, or take it away (`null` = "None": no
    * detectors, no voice, no overlay, just the picture). Safe while running,
-   * paused or mid-song. Players past the first are ignored until row 16.
+   * paused or mid-song. Two players may hold the same instrument: each gets
+   * their own. A player past `setNumPlayers` is ignored.
    */
   setInstrument(id: InstrumentId | null, playerId: PlayerId = 0): void {
     if (playerId >= this.slots.length) return;
@@ -146,7 +156,10 @@ export class Session {
   }
 
   /**
-   * Stub until row 16 (two players by screen half): records the count, still one player.
+   * One or two players. With two, each owns a half of the picture (player 0 =
+   * screen-left); every instrument re-fits into its region at once, hands are
+   * re-dealt by half, and the model tracks four hands. Going back to one
+   * removes player 1's instrument.
    *
    * It also opens a player setup: the UI follows it with one `setInstrument`
    * per player, in the same tick, but says nothing at all for a player set to
@@ -155,7 +168,12 @@ export class Session {
    * every player is named and this sweep never finds anything.
    */
   setNumPlayers(n: number): void {
-    this.config.players.count = Math.min(2, Math.max(1, Math.round(n)));
+    const count = clampPlayers(n);
+    this.config.players.count = count;
+    for (let id = this.slots.length - 1; id >= count; id--) this.setInstrument(null, id);
+    this.slots.length = Math.min(this.slots.length, count);
+    while (this.slots.length < count) this.slots.push(null);
+    void this.tracker?.setNumHands(this.numHands);
     if (this.unconfirmed) return; // a sweep is already queued for this tick
     this.unconfirmed = new Set(this.slots.map((_, id) => id as PlayerId));
     queueMicrotask(() => {
@@ -166,33 +184,62 @@ export class Session {
     });
   }
 
-  /**
-   * Snap a player's instrument to where they are right now (the C key; for
-   * drums, start or finish placing the kit). A running song is stopped and a
-   * paused band resumed first. Always answers with a toast.
-   */
-  calibrate(playerId: PlayerId = 0): boolean {
-    const instrument = this.slots[playerId]?.instrument;
-    let ok = false;
-    let text: string;
-    if (!instrument?.calibrate) text = `Nothing to calibrate on ${instrument?.id ?? 'that player'}`;
-    else if (!this.lastFrame) text = 'Start the camera first';
-    else {
-      // Calibrating takes the stage: the song stops and a paused band wakes up, so the hands are tracked live.
-      if (this.songRunning) this.stopSong();
-      if (this.isPaused) this.resume();
-      ok = instrument.calibrate(this.lastFrame);
-      const view = instrument.view?.();
-      // The drum kit is placed with two presses: it follows the hands in between.
-      if (ok && view?.instrument === 'drums') text = view.calibration === 'auto' ? 'Rest your hands where you want the kit, then calibrate again to lock it' : 'Kit locked';
-      else text = ok ? 'Calibrated' : 'Hold your hands where you want to play, then calibrate';
-    }
-    bus.emit({ type: 'ui.toast', t: performance.now(), text, kind: ok ? 'success' : 'warn' });
-    return ok;
+  /** Hands the model should track: two per player, or more if `vision.numHands` asks for it. */
+  private get numHands(): number {
+    return Math.max(this.config.vision.numHands, 2 * this.config.players.count);
   }
 
-  resetCalibration(): void {
-    for (const c of this.players) c.instrument.resetCalibration?.();
+  /**
+   * Snap an instrument to where its player is right now (the C key; for drums,
+   * start or finish placing the kit). With no argument, every player who holds
+   * something that can calibrate; with a player id, that player only. A
+   * running song is stopped and a paused band resumed first. Always answers
+   * with a toast, one per player; true if anyone calibrated.
+   */
+  calibrate(playerId?: PlayerId): boolean {
+    const everyone = playerId === undefined;
+    const ids = everyone ? this.slots.map((_, id) => id as PlayerId) : [playerId];
+    const able = ids.filter((id) => this.slots[id]?.instrument.calibrate);
+    const frame = this.lastFrame;
+    if (able.length === 0 || !frame) {
+      let text = 'Start the camera first';
+      if (able.length === 0) text = ids.length > 1 ? 'Nothing to calibrate' : `Nothing to calibrate on ${this.slots[ids[0]]?.instrument.id ?? 'that player'}`;
+      bus.emit({ type: 'ui.toast', t: performance.now(), text, kind: 'warn' });
+      return false;
+    }
+    // Calibrating takes the stage: the song stops and a paused band wakes up, so the hands are tracked live.
+    if (this.songRunning) this.stopSong();
+    if (this.isPaused) this.resume();
+    // A drum kit is placed with two presses (it follows the hands in between). One
+    // press for everyone keeps the drummers together: if any kit is being placed
+    // this press pins them, and a kit that is already pinned stays where it is.
+    const pinning = everyone && able.some((id) => this.calibrationOf(id) === 'auto');
+    let any = false;
+    for (const id of able) {
+      const instrument = this.slots[id]!.instrument;
+      const isDrums = instrument.id === 'drums';
+      if (pinning && isDrums && this.calibrationOf(id) !== 'auto') continue;
+      const ok = instrument.calibrate!(frame);
+      let text: string;
+      if (ok && isDrums) text = this.calibrationOf(id) === 'auto' ? 'Rest your hands where you want the kit, then calibrate again to lock it' : 'Kit locked';
+      else text = ok ? 'Calibrated' : 'Hold your hands where you want to play, then calibrate';
+      if (this.slots.length > 1) text = `Player ${id + 1}: ${text}`;
+      bus.emit({ type: 'ui.toast', t: performance.now(), text, kind: ok ? 'success' : 'warn' });
+      any ||= ok;
+    }
+    return any;
+  }
+
+  /** Back to the default spot: everyone's instrument, or one player's. */
+  resetCalibration(playerId?: PlayerId): void {
+    for (const c of this.players) {
+      if (playerId === undefined || c.playerId === playerId) c.instrument.resetCalibration?.();
+    }
+  }
+
+  private calibrationOf(playerId: PlayerId): CalibrationState {
+    const view = this.slots[playerId]?.instrument.view?.();
+    return view?.instrument === 'drums' ? view.calibration : 'none';
   }
 
   /** Generated bass, pad and drums under the players. With it on, the click goes quiet after the count-in. */
@@ -261,12 +308,11 @@ export class Session {
     // One entry per player, instrument or not, so `players[i]` is always player i.
     const players: PlayerInfo[] = this.slots.map((c, i) => {
       const id = i as PlayerId;
-      const view = c?.instrument.view?.() ?? null;
       return {
         id,
         instrument: c?.instrument.id ?? null,
         hands: hands.filter((h) => h.playerId === id).length,
-        calibration: view?.instrument === 'drums' ? view.calibration : 'none',
+        calibration: this.calibrationOf(id),
         score: this.score.info(id),
       };
     });
@@ -385,7 +431,7 @@ export class Session {
       if (this.disposed) return this.teardown();
 
       this.onPhase('model');
-      this.tracker = await HandTracker.create(this.config.vision);
+      this.tracker = await HandTracker.create({ ...this.config.vision, numHands: this.numHands });
       if (this.disposed) return this.teardown();
       const warmMs = this.tracker.warmUp();
       this.stats.delegate = this.tracker.delegate;
@@ -506,7 +552,9 @@ export class Session {
     this.clearPause();
     this.stopReplay();
     this.loop?.stop();
-    this.replayer = new Replayer(rec, (frame) => this.consume(frame), opts);
+    // A recording's hands are dealt again by screen half, for whoever is playing now.
+    const players = new PlayerAssigner(() => this.config.players);
+    this.replayer = new Replayer(rec, (frame) => this.consume(players.assign(frame)), opts);
     this.overlay.aspect = rec.aspect;
     this.replayer.start();
   }
@@ -611,4 +659,8 @@ export class Session {
       : frame.inferenceMs;
     this.stats.hands = frame.hands.length;
   }
+}
+
+function clampPlayers(n: number): number {
+  return Math.min(MAX_PLAYERS, Math.max(1, Math.round(n) || 1));
 }

@@ -8,7 +8,7 @@ import { SilentVoice } from '@/audio/voices/silentVoice';
 import { BassPluckDetector } from '@/detectors/bassDetector';
 import { DebugOverlay } from '@/detectors/debugOverlay';
 import { DrumHitDetector, kitZones } from '@/detectors/drumHitDetector';
-import { GuitarStrumDetector, type PlayerRegion } from '@/detectors/strumDetector';
+import { FULL_FRAME, GuitarStrumDetector, type PlayerRegion } from '@/detectors/strumDetector';
 import { createFx, type FxLayer } from '@/render/fxRegistry';
 
 /** Instruments a player can pick, in picker order. */
@@ -33,7 +33,7 @@ export interface InstrumentDeps {
   playerId?: PlayerId;
   /** Song position, for views that show the chart chord. */
   song?: () => SongContext;
-  /** The slice of the frame this player owns (default: all of it; row 16 passes the halves). */
+  /** The slice of the frame this player owns (default: all of it; the session passes a half when two play). */
   region?: () => PlayerRegion;
 }
 
@@ -102,49 +102,66 @@ export function createDrums(deps: InstrumentDeps): Instrument {
 }
 
 type BandPlacement = Pick<Config['strum'], 'bandY' | 'bandXMin' | 'bandXMax'>;
-/** Where the strum band sat before anyone moved it, per config object, so a reset survives instrument swaps. */
-const bandDefaults = new WeakMap<Config, BandPlacement>();
 /** A calibrated band is at least this much wider than the hand it was placed under. */
 const HAND_MARGIN = 1.2;
 
 /**
- * Put the strum band under the player's strumming hand. Across, the band is
- * centred on the whole hand (wrist to fingertips), which is what the player
- * sees; a palm-centred band looks shifted toward the bridge, because a
- * strumming hand points its fingers at the neck. It is never narrower than the
- * hand, so the palm (the point the detector tracks) always has room inside
- * it. Up and down, the centreline sits on the palm, the point that crosses it.
- * The detector reads `config.strum` live, so the band (and Alex's strings,
- * which draw from it) moves at once.
+ * One guitar's band. Until its player places it, it is the shared
+ * `config.strum` band, read live; a placement belongs to this guitar alone, so
+ * two guitarists move two bands. `guitarConfigFor` shows it to the detector.
  */
-function placeBand(config: Config, frame: VisionFrame, playerId: PlayerId, strumTrackId: TrackId | null): boolean {
-  const { strum } = config;
+interface BandSlot {
+  placed: BandPlacement | null;
+}
+
+/**
+ * The config as one guitar's detector should see it: `strum.bandY / bandXMin /
+ * bandXMax` are this guitar's placement once it has one; every other key, and
+ * the band itself until then, falls through to the shared config, so the
+ * thresholds stay live.
+ */
+function guitarConfigFor(config: Config, slot: BandSlot): Config {
+  const key = (k: keyof BandPlacement) => ({ get: () => slot.placed?.[k] ?? config.strum[k], enumerable: true });
+  const strum: Config['strum'] = Object.create(config.strum, { bandY: key('bandY'), bandXMin: key('bandXMin'), bandXMax: key('bandXMax') });
+  return Object.create(config, { strum: { value: strum, enumerable: true } });
+}
+
+/**
+ * Where to put the strum band so it sits under the player's strumming hand,
+ * as fractions of the player's region. Across, the band is centred on the
+ * whole hand (wrist to fingertips), which is what the player sees; a
+ * palm-centred band looks shifted toward the bridge, because a strumming hand
+ * points its fingers at the neck. It is never narrower than the hand, so the
+ * palm (the point the detector tracks) always has room inside it, and it never
+ * leaves the region. Up and down, the centreline sits on the palm, the point
+ * that crosses it. Null when the player has no hand in view.
+ */
+function placeBand(strum: Config['strum'], frame: VisionFrame, playerId: PlayerId, strumTrackId: TrackId | null, region: PlayerRegion): BandPlacement | null {
   // The strummer if the roles know one, else the hand furthest to the strumming side (screen-right unless lefty).
   const hands = frame.hands.filter((h) => h.playerId === playerId).sort((a, b) => (strum.lefty ? a.palm.x - b.palm.x : b.palm.x - a.palm.x));
   const hand = hands.find((h) => h.trackId === strumTrackId) ?? hands[0];
-  if (!hand) return false;
+  if (!hand) return null;
+  const width = region.x1 - region.x0;
+  const inRegion = (x: number) => (x / frame.aspect - region.x0) / width;
   const xs = hand.raw.map((p) => p.x);
-  const left = Math.min(hand.palm.x, ...xs) / frame.aspect;
-  const right = Math.max(hand.palm.x, ...xs) / frame.aspect;
-  const defaults = bandDefaults.get(config) ?? strum;
-  const half = Math.min(0.5, Math.max((defaults.bandXMax - defaults.bandXMin) / 2, ((right - left) / 2) * HAND_MARGIN));
+  const left = inRegion(Math.min(hand.palm.x, ...xs));
+  const right = inRegion(Math.max(hand.palm.x, ...xs));
+  const half = Math.min(0.5, Math.max((strum.bandXMax - strum.bandXMin) / 2, ((right - left) / 2) * HAND_MARGIN));
   // Config x is written for a right-handed player; `lefty` mirrors it at read time.
   const x = (left + right) / 2;
   const cx = Math.min(1 - half, Math.max(half, strum.lefty ? 1 - x : x));
-  strum.bandXMin = cx - half;
-  strum.bandXMax = cx + half;
-  strum.bandY = Math.min(1 - strum.bandHalfHeight, Math.max(strum.bandHalfHeight, hand.palm.y));
-  return true;
+  return {
+    bandXMin: cx - half,
+    bandXMax: cx + half,
+    bandY: Math.min(1 - strum.bandHalfHeight, Math.max(strum.bandHalfHeight, hand.palm.y)),
+  };
 }
 
 /** Easy mode only: a strum plays the chart chord, or the free-play loop when no song runs. */
 export function createGuitar(deps: InstrumentDeps): Instrument {
-  const { config, output, playerId = 0, song } = deps;
-  if (!bandDefaults.has(config)) {
-    const { bandY, bandXMin, bandXMax } = config.strum;
-    bandDefaults.set(config, { bandY, bandXMin, bandXMax });
-  }
-  const detector = new GuitarStrumDetector(config, playerId);
+  const { config, output, playerId = 0, song, region = () => FULL_FRAME } = deps;
+  const slot: BandSlot = { placed: null };
+  const detector = new GuitarStrumDetector(guitarConfigFor(config, slot), playerId, region);
   const voice = new GuitarVoice(output, () => config.guitar);
   const view = (): InstrumentView => ({
     instrument: 'guitar',
@@ -161,16 +178,21 @@ export function createGuitar(deps: InstrumentDeps): Instrument {
     zones: [],
     overlay: fx,
     view,
-    calibrate: (frame) => placeBand(config, frame, playerId, detector.roles.strumTrackId),
-    resetCalibration: () => void Object.assign(config.strum, bandDefaults.get(config)),
+    calibrate: (frame) => {
+      // Measured against the shared band, so the default width is what a small, far hand gets back.
+      const placed = placeBand(config.strum, frame, playerId, detector.roles.strumTrackId, region());
+      if (placed) slot.placed = placed;
+      return placed !== null;
+    },
+    resetCalibration: () => void (slot.placed = null),
     dispose: () => fx.dispose?.(),
   };
 }
 
 /** Silent until K5 (pluck detector, bass voice). */
 export function createBass(deps: InstrumentDeps): Instrument {
-  const { config, playerId = 0 } = deps;
-  const detector = new BassPluckDetector(config, playerId);
+  const { config, playerId = 0, region } = deps;
+  const detector = new BassPluckDetector(config, playerId, region);
   const view = (): InstrumentView => ({
     instrument: 'bass',
     band: detector.band,

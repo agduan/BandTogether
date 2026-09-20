@@ -4,13 +4,15 @@
  * This is where the app's coordinate conventions are enforced (see
  * core/types.ts): display space in frame-height units, x mirrored exactly once
  * here, one clock. It also owns the per-hand state that must survive across
- * frames: identity tracks, the render-stream One-Euro filters and the palm
- * velocity buffers, all keyed by trackId.
+ * frames: identity tracks, the render-stream One-Euro filters, the palm
+ * velocity buffers and the hand's player (by screen half, see players.ts), all
+ * keyed by trackId.
  */
 import type { Config } from '@/app/config';
 import { HAND_LANDMARK_COUNT, LM, type HandFrame, type Handedness, type Vec2, type Vec3, type VisionFrame } from '@/core/types';
 import type { HandLandmarkerResult } from '@/vision/handLandmarker';
 import { OneEuro2D, VelocityBuffer } from './filters';
+import { PlayerAssigner } from './players';
 import { IdentityTracker } from './tracker';
 
 /**
@@ -47,7 +49,7 @@ export function palmSizeOf(points: ReadonlyArray<Vec2>): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
-export type AdapterConfig = Pick<Config, 'vision' | 'tracker' | 'filter'>;
+export type AdapterConfig = Pick<Config, 'vision' | 'tracker' | 'filter' | 'players'>;
 
 interface TrackState {
   smooth: OneEuro2D[];
@@ -57,9 +59,11 @@ interface TrackState {
 export class FrameAdapter {
   private readonly tracker: IdentityTracker;
   private readonly states = new Map<number, TrackState>();
+  private readonly players: PlayerAssigner;
 
   constructor(private readonly config: AdapterConfig) {
     this.tracker = new IdentityTracker(config.tracker);
+    this.players = new PlayerAssigner(() => this.config.players);
   }
 
   adapt(result: HandLandmarkerResult, t: number, aspect: number, inferenceMs: number): VisionFrame {
@@ -87,7 +91,13 @@ export class FrameAdapter {
       t,
     );
 
-    const hands: HandFrame[] = assignments.map((a) => {
+    const playerIds = this.players.update(
+      assignments.map((a) => ({ trackId: a.trackId, x: candidates[a.inputIndex].palm.x })),
+      aspect,
+      t,
+    );
+
+    const hands: HandFrame[] = assignments.map((a, n) => {
       const c = candidates[a.inputIndex];
       const state = this.stateFor(a.trackId);
       if (a.dt === 0) {
@@ -100,7 +110,7 @@ export class FrameAdapter {
         t,
         dt: a.dt,
         trackId: a.trackId,
-        playerId: 0,
+        playerId: playerIds[n],
         handedness: a.handedness,
         handednessScore: a.handednessScore,
         raw: c.raw,
@@ -120,6 +130,7 @@ export class FrameAdapter {
   reset(): void {
     this.tracker.reset();
     this.states.clear();
+    this.players.reset();
   }
 
   private stateFor(trackId: number): TrackState {

@@ -6,7 +6,8 @@ import { createInstrument } from '@/app/instruments';
 import { EasyMode, FREEPLAY_CONTEXT, FreeplayChords, HardMode, strumChord } from '@/audio/modes';
 import { GuitarVoice, planStrum } from '@/audio/voices/guitarVoice';
 import { bus } from '@/core/bus';
-import type { SongContext, StringSound, StrumEvent, VisionFrame } from '@/core/types';
+import type { Instrument, SongContext, StringSound, StrumEvent, VisionFrame } from '@/core/types';
+import type { BandGeometry } from '@/core/views';
 import { FREEPLAY_LOOP, parseChord, VOICINGS, voicingFor } from '@/song/chords';
 import { SONGS } from '@/song/songs';
 import { flattenBars } from '@/song/types';
@@ -138,6 +139,12 @@ describe('planStrum', () => {
 describe('guitar instrument', () => {
   const deps = () => ({ config: structuredClone(DEFAULT_CONFIG), output: () => ({}) as ToneAudioNode });
   const frameWith = (...hands: ReturnType<typeof handAt>[]): VisionFrame => ({ t: 1000, aspect: ASPECT, hands, inferenceMs: 0 });
+  /** The band as the detector uses it and the art draws it (display space, h). */
+  const bandOf = (guitar: Instrument): BandGeometry => {
+    const view = guitar.view?.();
+    if (view?.instrument !== 'guitar') throw new Error('no guitar view');
+    return view.band;
+  };
 
   it('has a real voice, and a strum reaches it with the chart chord resolved', () => {
     const guitar = createInstrument('guitar', deps());
@@ -163,30 +170,67 @@ describe('guitar instrument', () => {
   it('calibrate centres the band on the strumming hand and reset puts it back', () => {
     const d = deps();
     const guitar = createInstrument('guitar', d);
-    const before = { ...d.config.strum };
+    const before = structuredClone(d.config.strum);
+    const home = bandOf(guitar);
     expect(guitar.calibrate?.(frameWith())).toBe(false);
 
     // Two hands, no roles yet: the screen-right one is the strummer for a right-handed player.
     const fret = handAt(1, { x: 0.3, y: 0.4 }, 1000, 0);
     const strummer = handAt(2, { x: 0.5 * ASPECT, y: 0.7 }, 1000, 0);
     expect(guitar.calibrate?.(frameWith(fret, strummer))).toBe(true);
-    const { strum: s } = d.config;
-    expect((s.bandXMin + s.bandXMax) / 2).toBeCloseTo(0.5);
-    expect(s.bandXMax - s.bandXMin).toBeCloseTo(before.bandXMax - before.bandXMin);
-    expect(s.bandY).toBeCloseTo(0.7);
-    const view = guitar.view?.();
-    expect(view?.instrument === 'guitar' && view.band.y).toBeCloseTo(0.7);
+    let band = bandOf(guitar);
+    expect((band.x0 + band.x1) / 2 / ASPECT).toBeCloseTo(0.5);
+    expect((band.x1 - band.x0) / ASPECT).toBeCloseTo(before.bandXMax - before.bandXMin);
+    expect(band.y).toBeCloseTo(0.7);
 
     // A hand at the very edge keeps the whole band on screen.
     guitar.calibrate?.(frameWith(handAt(2, { x: ASPECT, y: 0.99 }, 1000, 0)));
-    expect(s.bandXMax).toBeCloseTo(1);
-    expect(s.bandY).toBeCloseTo(1 - s.bandHalfHeight);
+    band = bandOf(guitar);
+    expect(band.x1 / ASPECT).toBeCloseTo(1);
+    expect(band.y).toBeCloseTo(1 - before.bandHalfHeight);
 
-    // The reset survives an instrument swap (a new guitar on the same config).
-    guitar.dispose?.();
-    const again = createInstrument('guitar', d);
-    again.resetCalibration?.();
+    // The placement is this guitar's own: the shared config is never written, and a reset goes back to it.
     expect(d.config.strum).toEqual(before);
+    guitar.resetCalibration?.();
+    expect(bandOf(guitar)).toEqual(home);
+    // An unplaced band still follows the shared config live (URL keys, sliders).
+    d.config.strum.bandY = 0.4;
+    expect(bandOf(guitar).y).toBeCloseTo(0.4);
+  });
+
+  it('two guitarists get two bands, each placed and kept inside its own half', () => {
+    const d = deps();
+    const halves = [{ x0: 0, x1: 0.5 }, { x0: 0.5, x1: 1 }];
+    const [p0, p1] = halves.map((region, playerId) => createInstrument('guitar', { ...d, playerId, region: () => region }));
+    const mid = ASPECT / 2;
+    // Before anyone calibrates, the default band sits at the same spot of each half.
+    expect(bandOf(p0).x1).toBeLessThanOrEqual(mid);
+    expect(bandOf(p1).x0).toBeGreaterThanOrEqual(mid);
+    expect(bandOf(p1).x0 - mid).toBeCloseTo(bandOf(p0).x0);
+
+    const frame = frameWith(
+      handAt(1, { x: 0.3, y: 0.55 }, 1000, 0, { playerId: 0 }),
+      handAt(2, { x: mid + 0.4, y: 0.75 }, 1000, 0, { playerId: 1 }),
+    );
+    // Player 1 calibrates: only their band moves, onto their own hand.
+    const p0Before = bandOf(p0);
+    expect(p1.calibrate?.(frame)).toBe(true);
+    expect(bandOf(p0)).toEqual(p0Before);
+    expect((bandOf(p1).x0 + bandOf(p1).x1) / 2).toBeCloseTo(mid + 0.4);
+    expect(bandOf(p1).y).toBeCloseTo(0.75);
+    expect(p0.calibrate?.(frame)).toBe(true);
+    expect((bandOf(p0).x0 + bandOf(p0).x1) / 2).toBeCloseTo(0.3);
+    expect(bandOf(p1).y).toBeCloseTo(0.75);
+
+    // A hand hugging the split: the band stops at the line instead of crossing into the other half.
+    p0.calibrate?.(frameWith(handAt(1, { x: mid - 0.01, y: 0.6 }, 1000, 0, { playerId: 0 })));
+    expect(bandOf(p0).x1).toBeCloseTo(mid);
+    // A player with no hand of their own in view cannot calibrate off the other player's.
+    expect(p0.calibrate?.(frameWith(handAt(2, { x: 0.2, y: 0.5 }, 1000, 0, { playerId: 1 })))).toBe(false);
+
+    p1.resetCalibration?.();
+    expect(bandOf(p1).x0 - mid).toBeCloseTo((d.config.strum.bandXMin * ASPECT) / 2);
+    expect(bandOf(p0).x1).toBeCloseTo(mid); // player 0 keeps theirs
   });
 
   it('centres on the whole hand, not the palm, and is never narrower than the hand', () => {
@@ -207,7 +251,7 @@ describe('guitar instrument', () => {
 
     // A small, far hand keeps the default width; calibrating again does not ratchet the width up.
     guitar.calibrate?.(frameWith(handAt(1, { x: 0.7, y: 0.5 }, 1000, 0)));
-    expect(d.config.strum.bandXMax - d.config.strum.bandXMin).toBeCloseTo(DEFAULT_CONFIG.strum.bandXMax - DEFAULT_CONFIG.strum.bandXMin);
+    expect((bandOf(guitar).x1 - bandOf(guitar).x0) / ASPECT).toBeCloseTo(DEFAULT_CONFIG.strum.bandXMax - DEFAULT_CONFIG.strum.bandXMin);
   });
 
   it('lefty placement mirrors: the band lands under a screen-left hand', () => {

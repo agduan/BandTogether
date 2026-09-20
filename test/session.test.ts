@@ -4,8 +4,9 @@ import { getSong } from '@/song/songs';
 import { Session } from '@/app/session';
 import { bus } from '@/core/bus';
 import { FREEPLAY_CONTEXT } from '@/audio/modes';
-import type { AppEvent, InstrumentId, SongContext } from '@/core/types';
+import type { AppEvent, InstrumentId, SongContext, VisionFrame } from '@/core/types';
 import { GuitarFx } from '@/render/fx';
+import { handAt } from './helpers/hands';
 
 /** A Session never touches the camera, model or audio context until `start()`, so fakes are enough. */
 function makeSession(instrument: InstrumentId | null = 'drums'): Session {
@@ -52,8 +53,9 @@ describe('Session seams', () => {
     expect(triggers).toBe(0);
     s.setInstrument('guitar');
     expect(s.info().instrument).toBe('guitar');
-    s.setInstrument('drums', 1); // players past the first wait for row 16
+    s.setInstrument('drums', 1); // there is no player 2 until setNumPlayers(2)
     expect(s.info().players).toHaveLength(1);
+    expect(s.controllers).toHaveLength(1);
     s.stop();
   });
 
@@ -341,6 +343,161 @@ describe('Session seams', () => {
     expect(seen.some((e) => e.type === 'ui.toast')).toBe(true);
     s.singer.setEcho(2);
     expect(s.info().singer.echo).toBe(1);
+    s.stop();
+  });
+});
+
+describe('two players', () => {
+  const ASPECT = 4 / 3;
+  const MID = ASPECT / 2;
+  const toasts = () => seen.filter((e) => e.type === 'ui.toast').map((e) => (e as { text: string }).text);
+  /** What the frame loop does for the instruments: remember the frame, run every controller on it. */
+  const feed = (s: Session, frame: VisionFrame) => {
+    s.lastFrame = frame;
+    for (const c of s.controllers) c.onFrame(frame);
+  };
+  const hands = (t: number): VisionFrame => ({
+    t, aspect: ASPECT, inferenceMs: 0,
+    hands: [handAt(1, { x: 0.3, y: 0.5 }, t, t ? 33 : 0, { playerId: 0 }), handAt(2, { x: MID + 0.35, y: 0.45 }, t, t ? 33 : 0, { playerId: 1 }), handAt(3, { x: MID + 0.5, y: 0.45 }, t, t ? 33 : 0, { playerId: 1 })],
+  });
+  const pads = (s: Session, playerId: number) => {
+    const view = s.controllers.find((c) => c.playerId === playerId)?.instrument.view?.();
+    if (view?.instrument !== 'drums') throw new Error('no drums view');
+    return view;
+  };
+  const twoPlayers = (a: InstrumentId | null, b: InstrumentId | null): Session => {
+    const s = makeSession(null);
+    s.setNumPlayers(2);
+    s.setInstrument(a, 0);
+    s.setInstrument(b, 1);
+    return s;
+  };
+
+  it('each player has a slot: own instrument, own half, own hands, own voice, own score', () => {
+    const s = twoPlayers('drums', 'drums');
+    expect(s.config.players.count).toBe(2);
+    expect(s.controllers.map((c) => c.playerId)).toEqual([0, 1]);
+    feed(s, hands(0));
+    const info = s.info();
+    expect(info.players.map((p) => [p.id, p.instrument, p.hands])).toEqual([[0, 'drums', 1], [1, 'drums', 2]]);
+    expect(info.players[1].score).toMatchObject({ points: 0, combo: 0 });
+    expect(info.instrument).toBe('drums');
+
+    // Two drummers, two kits, each inside its own half (player 0 = screen-left).
+    expect(Math.max(...pads(s, 0).pads.map((p) => p.x1))).toBeLessThanOrEqual(MID + 1e-9);
+    expect(Math.min(...pads(s, 1).pads.map((p) => p.x0))).toBeGreaterThanOrEqual(MID - 1e-9);
+    expect(pads(s, 0).anchor?.cx).toBeCloseTo(ASPECT / 4);
+    expect(pads(s, 1).anchor?.cx).toBeCloseTo((3 * ASPECT) / 4);
+
+    // Same instrument twice: both voices are registered and each answers its own player only.
+    expect((s.audio as unknown as { voices: Set<unknown> }).voices.size).toBe(2);
+    const played = [0, 0];
+    for (const c of s.controllers) c.instrument.voice.trigger = () => void played[c.playerId]++;
+    bus.emit({ type: 'drum.hit', t: 1, playerId: 1, pad: 'snare', velocity: 0.8 });
+    expect(played).toEqual([0, 1]);
+    s.stop();
+  });
+
+  it('setInstrument(null, 1) empties a player; going back to one player drops player 2 and gives player 1 the whole frame', () => {
+    const s = twoPlayers('drums', 'guitar');
+    feed(s, hands(0));
+    const voice = s.controllers[1].instrument.voice;
+    let disposed = 0;
+    voice.dispose = () => void disposed++;
+    s.setInstrument(null, 1);
+    expect(disposed).toBe(1);
+    expect(s.info().players[1]).toMatchObject({ id: 1, instrument: null, hands: 2 });
+    expect(s.controllers.map((c) => c.playerId)).toEqual([0]);
+
+    s.setInstrument('guitar', 1);
+    const drums = s.controllers[0];
+    s.setNumPlayers(1);
+    s.setInstrument('drums', 0);
+    expect(s.info().players).toHaveLength(1);
+    expect(s.controllers).toEqual([drums]); // player 1 keeps their controller through the change
+    feed(s, hands(33));
+    expect(pads(s, 0).anchor?.cx).toBeCloseTo(MID); // re-fitted into the whole frame at once
+    s.setInstrument('guitar', 1); // no such player any more
+    expect(s.controllers).toHaveLength(1);
+    s.stop();
+  });
+
+  it('the UI names players in one tick: an unnamed player 2 ends up with nothing', async () => {
+    const s = twoPlayers('guitar', 'drums');
+    await Promise.resolve();
+    expect(s.info().players.map((p) => p.instrument)).toEqual(['guitar', 'drums']);
+    s.setNumPlayers(2);
+    s.setInstrument('guitar', 0); // player 2 went to "None": the UI says nothing about them
+    await Promise.resolve();
+    expect(s.info().players.map((p) => p.instrument)).toEqual(['guitar', null]);
+    s.stop();
+  });
+
+  it('calibrate() is everyone, calibrate(id) is one player, and one press keeps two drummers in step', () => {
+    const s = twoPlayers('drums', 'drums');
+    feed(s, hands(0));
+    expect(s.calibrate()).toBe(true);
+    expect(s.info().players.map((p) => p.calibration)).toEqual(['auto', 'auto']);
+    expect(toasts()).toHaveLength(2);
+    expect(toasts()[0]).toMatch(/^Player 1: Rest your hands/);
+    expect(toasts()[1]).toMatch(/^Player 2: Rest your hands/);
+    for (let t = 33; t < 1500; t += 33) feed(s, hands(t));
+    expect(pads(s, 0).anchor?.cx).not.toBeCloseTo(ASPECT / 4, 2); // off its default, onto the player's hand (as far as the half allows)
+
+    // Player 2's badge pins player 2's kit only.
+    const kit0 = pads(s, 0).anchor;
+    expect(s.calibrate(1)).toBe(true);
+    expect(s.info().players.map((p) => p.calibration)).toEqual(['auto', 'locked']);
+    expect(toasts()[2]).toBe('Player 2: Kit locked');
+    // One press for everyone: the kit still being placed is pinned, the pinned one is left alone.
+    const kit1 = pads(s, 1).anchor;
+    expect(s.calibrate()).toBe(true);
+    expect(s.info().players.map((p) => p.calibration)).toEqual(['locked', 'locked']);
+    expect(toasts().slice(3)).toEqual(['Player 1: Kit locked']);
+    expect(pads(s, 1).anchor).toEqual(kit1);
+    expect(pads(s, 0).anchor?.cx).toBeCloseTo(kit0!.cx, 2);
+
+    // Reset one player: the other kit stays where it was pinned.
+    s.resetCalibration(0);
+    feed(s, hands(1600));
+    expect(pads(s, 0).anchor?.cx).toBeCloseTo(ASPECT / 4);
+    expect(pads(s, 1).anchor).toEqual(kit1);
+    s.resetCalibration();
+    feed(s, hands(1633));
+    expect(pads(s, 1).anchor?.cx).toBeCloseTo((3 * ASPECT) / 4);
+    s.stop();
+  });
+
+  it('two guitarists are two guitars: calibrate(1) moves only player 2\'s band, calibrate() moves both', () => {
+    const s = twoPlayers('guitar', 'guitar');
+    const band = (id: number) => {
+      const view = s.controllers[id].instrument.view?.();
+      if (view?.instrument !== 'guitar') throw new Error('no guitar view');
+      return view.band;
+    };
+    feed(s, hands(0));
+    expect(band(0).x1).toBeLessThanOrEqual(MID);
+    expect(band(1).x0).toBeGreaterThanOrEqual(MID);
+    const before = band(0);
+    expect(s.calibrate(1)).toBe(true);
+    expect(band(0)).toEqual(before);
+    expect(band(1).y).toBeCloseTo(0.45);
+    expect((band(1).x0 + band(1).x1) / 2).toBeCloseTo(MID + 0.5); // the screen-right hand of player 2's two
+    expect(toasts()).toEqual(['Player 2: Calibrated']);
+
+    expect(s.calibrate()).toBe(true);
+    expect((band(0).x0 + band(0).x1) / 2).toBeCloseTo(0.3);
+    expect(band(0).y).toBeCloseTo(0.5);
+    expect(toasts().slice(1)).toEqual(['Player 1: Calibrated', 'Player 2: Calibrated']);
+
+    // A player with nothing to calibrate is skipped; one with no hands in view is told so.
+    s.setInstrument('bass', 0);
+    feed(s, { ...hands(33), hands: [] });
+    expect(s.calibrate()).toBe(false);
+    expect(toasts().slice(3)).toEqual(['Player 2: Hold your hands where you want to play, then calibrate']);
+    s.setInstrument(null, 1);
+    expect(s.calibrate()).toBe(false);
+    expect(toasts()[4]).toBe('Nothing to calibrate');
     s.stop();
   });
 });

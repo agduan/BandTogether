@@ -35,10 +35,12 @@ export class HandTracker {
   private readonly landmarker: HandLandmarker;
   private lastT = -1;
   private closed = false;
+  private numHands: number;
 
-  private constructor(landmarker: HandLandmarker, delegate: 'GPU' | 'CPU') {
+  private constructor(landmarker: HandLandmarker, delegate: 'GPU' | 'CPU', numHands: number) {
     this.landmarker = landmarker;
     this.delegate = delegate;
+    this.numHands = numHands;
   }
 
   static async create(
@@ -58,12 +60,12 @@ export class HandTracker {
 
     if (vision.delegate === 'GPU') {
       try {
-        return new HandTracker(await build('GPU'), 'GPU');
+        return new HandTracker(await build('GPU'), 'GPU', vision.numHands);
       } catch (err) {
         console.warn('[handLandmarker] GPU delegate failed, falling back to CPU', err);
       }
     }
-    return new HandTracker(await build('CPU'), 'CPU');
+    return new HandTracker(await build('CPU'), 'CPU', vision.numHands);
   }
 
   /** Run one detection on a blank frame so shader compilation happens before the live loop. */
@@ -87,6 +89,23 @@ export class HandTracker {
     const start = performance.now();
     const result = this.landmarker.detectForVideo(source, stamp);
     return { result, inferenceMs: performance.now() - start };
+  }
+
+  /**
+   * Track more or fewer hands from now on (two per player). Kept as low as the
+   * players need: while fewer than `numHands` hands are in view MediaPipe
+   * re-runs its palm detector on every frame, which costs a lone player fps.
+   */
+  async setNumHands(n: number): Promise<void> {
+    if (this.closed || n === this.numHands) return;
+    const before = this.numHands;
+    this.numHands = n;
+    try {
+      await this.landmarker.setOptions({ numHands: n });
+    } catch (err) {
+      this.numHands = before;
+      console.warn(`[handLandmarker] could not switch to ${n} hands`, err);
+    }
   }
 
   close(): void {
