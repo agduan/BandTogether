@@ -230,12 +230,24 @@ export interface SongContext {
   key: string;
 }
 
+/** A resolved strum or pluck: one slot per string, low to high. */
+export interface StringSound {
+  /** `null` = that string is not struck by this stroke (it keeps ringing unless the chord changed). */
+  notes: (string | null)[];
+  /** 0..1 per slot. */
+  velocities: number[];
+  /** Order of the string stagger: down = low to high. */
+  direction?: StrumDirection;
+  /** The chord these notes spell, so the voice can tell a re-strum from a chord change. */
+  chord?: ChordName | null;
+}
+
 /** A "mode": turns gesture events into concrete notes. EasyMode | HardMode. */
 export interface NoteResolver {
-  resolveStrum(e: StrumEvent, song: SongContext): { notes: (string | null)[]; velocities: number[] };
+  resolveStrum(e: StrumEvent, song: SongContext): StringSound;
   resolveDrum(e: DrumHitEvent, song: SongContext): { sample: string; velocity: number };
   resolvePress(e: PressEvent, song: SongContext): { note: string; velocity: number };
-  resolveBass(e: BassPluckEvent, song: SongContext): { notes: (string | null)[]; velocities: number[] };
+  resolveBass(e: BassPluckEvent, song: SongContext): StringSound;
 }
 
 export type InstrumentId = 'guitar' | 'drums' | 'keyboard' | 'bass';
@@ -259,8 +271,10 @@ export interface Voice {
   readonly id: InstrumentId;
   load(): Promise<void>;
   /** Trigger a resolved sound; `when` is an AudioContext time or undefined for now. */
-  trigger(sound: { notes?: (string | null)[]; sample?: string; velocities?: number[]; velocity?: number }, when?: number): void;
+  trigger(sound: Partial<StringSound> & { sample?: string; velocity?: number }, when?: number): void;
   releaseAll(): void;
+  /** Free samplers and buffers; called when the voice is swapped out for good. */
+  dispose?(): void;
 }
 
 export interface Instrument {

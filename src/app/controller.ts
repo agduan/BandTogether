@@ -39,6 +39,7 @@ export class InstrumentController {
   private readonly audio: LatencySink;
   private readonly unsubscribe: () => void;
   private disposed = false;
+  private isMuted = false;
 
   constructor(opts: ControllerOptions) {
     this.playerId = opts.playerId;
@@ -47,7 +48,7 @@ export class InstrumentController {
     this.audio = opts.audio;
     this.song = opts.song ?? (() => FREEPLAY_CONTEXT);
     this.unsubscribe = bus.onAny((e) => {
-      if (!('playerId' in e) || e.playerId !== this.playerId) return;
+      if (this.isMuted || !('playerId' in e) || e.playerId !== this.playerId) return;
       if (!(EVENT_TYPES_BY_INSTRUMENT[this.instrument.id] as readonly string[]).includes(e.type)) return;
       this.play(e as InstrumentEvent);
     });
@@ -55,10 +56,25 @@ export class InstrumentController {
 
   /** Run the detectors on one frame and publish what they find. */
   onFrame(frame: VisionFrame): void {
-    if (this.disposed) return;
+    if (this.disposed || this.isMuted) return;
     for (const det of this.instrument.detectors) {
       for (const e of det.update(frame)) bus.emit(e);
     }
+  }
+
+  get muted(): boolean {
+    return this.isMuted;
+  }
+
+  /**
+   * A muted controller detects nothing and plays nothing (injected events
+   * included). Muting cuts what is ringing; unmuting starts the detectors
+   * clean, so the first frame back cannot fire a phantom hit.
+   */
+  set muted(on: boolean) {
+    if (on === this.isMuted) return;
+    this.isMuted = on;
+    this.reset();
   }
 
   reset(): void {

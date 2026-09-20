@@ -160,6 +160,15 @@ export interface Config {
     /** Half-width of the no-man's-land between the two screen halves, fraction of the width. */
     deadZone: number;
   };
+  guitar: {
+    /** dB */
+    volume: number;
+    /** Gap between strings in one strum: `spreadMinMs` for the fastest stroke, `spreadMaxMs` for the laziest. */
+    spreadMinMs: number;
+    spreadMaxMs: number;
+    /** Random +/- on each string's time so strums do not sound machine-made (ms). */
+    humanizeMs: number;
+  };
 }
 
 export const DEFAULT_CONFIG: Config = {
@@ -237,6 +246,7 @@ export const DEFAULT_CONFIG: Config = {
   backing: { enabled: true, volume: -10 },
   score: { subdivision: 2, perfectMs: 60, goodMs: 130, window: 16, latencyMs: 0 },
   players: { count: 1, deadZone: 0.05 },
+  guitar: { volume: -8, spreadMinMs: 4, spreadMaxMs: 20, humanizeMs: 1.5 },
 };
 
 /** Parse `?a.b=1&c=true` into a flat map of dotted paths to raw strings. */

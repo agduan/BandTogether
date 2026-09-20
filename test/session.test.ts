@@ -38,7 +38,7 @@ describe('Session seams', () => {
     s.stop();
   });
 
-  it('setInstrument swaps the controller, uses registered guitar art, and stays silent', () => {
+  it('setInstrument swaps the controller and uses registered guitar art', () => {
     const s = makeSession();
     const drums = s.controllers[0];
     s.setInstrument('guitar');
@@ -86,6 +86,33 @@ describe('Session seams', () => {
     s.lastFrame = { t: 1, aspect: 4 / 3, hands: [], inferenceMs: 0 };
     expect(s.calibrate()).toBe(true);
     expect(seen.filter((e) => e.type === 'ui.toast')[1]).toMatchObject({ text: 'Calibrated', kind: 'success' });
+    s.stop();
+  });
+
+  it('standby holds the band: no sound, no kick, no score, and instruments picked meanwhile stay quiet until it ends', () => {
+    const s = makeSession();
+    let triggers = 0;
+    s.controllers[0].instrument.voice.trigger = () => void triggers++;
+    s.kick();
+    expect(triggers).toBe(1);
+
+    s.setStandby(true);
+    expect(s.info().standby).toBe(true);
+    s.kick();
+    bus.emit({ type: 'drum.hit', t: 1, playerId: 0, pad: 'snare', velocity: 0.8 });
+    expect(triggers).toBe(1);
+
+    s.setInstrument('guitar'); // what Edit players does before Done
+    expect(s.controllers[0].muted).toBe(true);
+    let strums = 0;
+    s.controllers[0].instrument.voice.trigger = () => void strums++;
+    bus.emit({ type: 'guitar.strum', t: 2, playerId: 0, direction: 'down', velocity: 0.8, chord: null, chordConfidence: 0 });
+    expect(strums).toBe(0);
+
+    s.setStandby(false);
+    expect(s.info().standby).toBe(false);
+    bus.emit({ type: 'guitar.strum', t: 3, playerId: 0, direction: 'down', velocity: 0.8, chord: null, chordConfidence: 0 });
+    expect(strums).toBe(1);
     s.stop();
   });
 

@@ -1,8 +1,9 @@
 import type { ToneAudioNode } from 'tone';
 import type { Config } from './config';
-import type { Detector, Instrument, InstrumentId, PlayerId, PlayMode, SongContext } from '@/core/types';
+import type { Detector, Instrument, InstrumentId, PlayerId, PlayMode, SongContext, TrackId, VisionFrame } from '@/core/types';
 import type { InstrumentView } from '@/core/views';
 import { DrumsVoice } from '@/audio/voices/drumsVoice';
+import { GuitarVoice } from '@/audio/voices/guitarVoice';
 import { SilentVoice } from '@/audio/voices/silentVoice';
 import { BassPluckDetector } from '@/detectors/bassDetector';
 import { DebugOverlay } from '@/detectors/debugOverlay';
@@ -76,24 +77,68 @@ export function createDrums(deps: InstrumentDeps): Instrument {
   };
 }
 
-/** Strums are detected (row 10); silent until row 11 (guitar voice, chart voicings). */
+type BandPlacement = Pick<Config['strum'], 'bandY' | 'bandXMin' | 'bandXMax'>;
+/** Where the strum band sat before anyone moved it, per config object, so a reset survives instrument swaps. */
+const bandDefaults = new WeakMap<Config, BandPlacement>();
+/** A calibrated band is at least this much wider than the hand it was placed under. */
+const HAND_MARGIN = 1.2;
+
+/**
+ * Put the strum band under the player's strumming hand. Across, the band is
+ * centred on the whole hand (wrist to fingertips), which is what the player
+ * sees; a palm-centred band looks shifted toward the bridge, because a
+ * strumming hand points its fingers at the neck. It is never narrower than the
+ * hand, so the palm (the point the detector tracks) always has room inside
+ * it. Up and down, the centreline sits on the palm, the point that crosses it.
+ * The detector reads `config.strum` live, so the band (and Alex's strings,
+ * which draw from it) moves at once.
+ */
+function placeBand(config: Config, frame: VisionFrame, playerId: PlayerId, strumTrackId: TrackId | null): boolean {
+  const { strum } = config;
+  // The strummer if the roles know one, else the hand furthest to the strumming side (screen-right unless lefty).
+  const hands = frame.hands.filter((h) => h.playerId === playerId).sort((a, b) => (strum.lefty ? a.palm.x - b.palm.x : b.palm.x - a.palm.x));
+  const hand = hands.find((h) => h.trackId === strumTrackId) ?? hands[0];
+  if (!hand) return false;
+  const xs = hand.raw.map((p) => p.x);
+  const left = Math.min(hand.palm.x, ...xs) / frame.aspect;
+  const right = Math.max(hand.palm.x, ...xs) / frame.aspect;
+  const defaults = bandDefaults.get(config) ?? strum;
+  const half = Math.min(0.5, Math.max((defaults.bandXMax - defaults.bandXMin) / 2, ((right - left) / 2) * HAND_MARGIN));
+  // Config x is written for a right-handed player; `lefty` mirrors it at read time.
+  const x = (left + right) / 2;
+  const cx = Math.min(1 - half, Math.max(half, strum.lefty ? 1 - x : x));
+  strum.bandXMin = cx - half;
+  strum.bandXMax = cx + half;
+  strum.bandY = Math.min(1 - strum.bandHalfHeight, Math.max(strum.bandHalfHeight, hand.palm.y));
+  return true;
+}
+
+/** Easy mode only: a strum plays the chart chord, or the free-play loop when no song runs. */
 export function createGuitar(deps: InstrumentDeps): Instrument {
-  const { config, playerId = 0, song } = deps;
+  const { config, output, playerId = 0, song } = deps;
+  if (!bandDefaults.has(config)) {
+    const { bandY, bandXMin, bandXMax } = config.strum;
+    bandDefaults.set(config, { bandY, bandXMin, bandXMax });
+  }
   const detector = new GuitarStrumDetector(config, playerId);
+  const voice = new GuitarVoice(output, () => config.guitar);
   const view = (): InstrumentView => ({
     instrument: 'guitar',
     band: detector.band,
-    chord: song?.().chord ?? null,
+    // The chart chord; in free play, the loop chord that last sounded.
+    chord: song?.().chord ?? voice.chord,
     ...detector.roles,
   });
   const fx = overlayFor('guitar', deps, [detector], view);
   return {
     id: 'guitar',
     detectors: [detector],
-    voice: new SilentVoice('guitar'),
+    voice,
     zones: [],
     overlay: fx,
     view,
+    calibrate: (frame) => placeBand(config, frame, playerId, detector.roles.strumTrackId),
+    resetCalibration: () => void Object.assign(config.strum, bandDefaults.get(config)),
     dispose: () => fx.dispose?.(),
   };
 }

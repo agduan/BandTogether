@@ -17,6 +17,8 @@ export interface SessionInfo {
   /** Player 0's instrument. */
   instrument: InstrumentId;
   paused: boolean;
+  /** The band is held while the players are edited: hands are tracked, nothing plays (see `Session.setStandby`). */
+  standby: boolean;
   song: SongInfo;
   backing: { enabled: boolean };
   singer: SingerInfo;

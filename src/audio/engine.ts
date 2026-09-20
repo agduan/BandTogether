@@ -51,6 +51,7 @@ export class AudioEngine {
   /** Forget a voice that was swapped out (its ringing notes are cut). */
   removeVoice(voice: Voice): void {
     voice.releaseAll();
+    voice.dispose?.();
     if (this.voices.get(voice.id) === voice) this.voices.delete(voice.id);
   }
 

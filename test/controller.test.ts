@@ -79,6 +79,21 @@ describe('InstrumentController', () => {
     controller.dispose();
   });
 
+  it('a muted controller detects and plays nothing, cuts what rings, and comes back clean', () => {
+    const { controller, voice } = setup([1033, 1100]);
+    controller.muted = true;
+    expect(voice.released).toBe(1);
+    controller.onFrame(frame(1033));
+    bus.emit({ type: 'drum.hit', t: 1, playerId: 0, pad: 'kick', velocity: 0.9 });
+    expect(voice.triggers).toEqual([]);
+    expect(seen.filter((e) => e.type === 'drum.hit')).toHaveLength(1); // only the injected one: the detector never ran
+
+    controller.muted = false;
+    controller.onFrame(frame(1100));
+    expect(voice.triggers).toEqual([{ sample: 'snare', velocity: 0.7 }]);
+    controller.dispose();
+  });
+
   it('routes bass plucks through resolveBass and stays silent when the resolver has no note', () => {
     const voice = fakeVoice();
     const stamps: InstrumentEvent[] = [];

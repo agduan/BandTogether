@@ -73,6 +73,7 @@ export class Session {
   private readonly fpsMeter = new FpsMeter();
   private disposed = false;
   private isPaused = false;
+  private isStandby = false;
   private onPhase: (phase: SessionPhase, detail?: string) => void = () => {};
 
   constructor(video: HTMLVideoElement, canvas: HTMLCanvasElement, config: Config) {
@@ -104,13 +105,15 @@ export class Session {
       song: () => this.songContext(),
     });
     void this.audio.addVoice(instrument.voice);
-    return new InstrumentController({
+    const controller = new InstrumentController({
       playerId,
       instrument,
       resolver: createResolver(this.config.play.mode),
       audio: this.audio,
       song: () => this.songContext(),
     });
+    controller.muted = this.isStandby; // instruments picked while the players are edited stay quiet until Done
+    return controller;
   }
 
   /** Swap a player's instrument. Safe while running, paused or mid-song. */
@@ -157,6 +160,7 @@ export class Session {
 
   /** The foot: play the kick for whoever is on drums (spacebar). Goes through the bus like a real hit. */
   kick(velocity = 0.9): void {
+    if (this.isStandby) return;
     const drummer = this.players.find((c) => c.instrument.id === 'drums');
     if (!drummer) return;
     bus.emit({ type: 'drum.hit', t: performance.now(), playerId: drummer.playerId, pad: 'kick', velocity });
@@ -164,7 +168,7 @@ export class Session {
 
   /** Score a sounding event against the song clock. Free play and a paused band are not judged. */
   private judge(e: InstrumentEvent): void {
-    if (this.isPaused) return;
+    if (this.isPaused || this.isStandby) return;
     const instrument = this.players[e.playerId]?.instrument.id;
     if (instrument && isScoredEvent(e, instrument)) this.score.hit(e.playerId);
   }
@@ -198,6 +202,7 @@ export class Session {
       beatsPerBar: this.songClock?.beatsPerBar ?? 4,
       instrument: this.players[0].instrument.id,
       paused: this.isPaused,
+      standby: this.isStandby,
       song: this.songInfo(),
       backing: { enabled: this.config.backing.enabled },
       singer: this.singer.info(),
@@ -262,7 +267,7 @@ export class Session {
       kickVoice: this.drumsVoice(),
     });
     this.songClock.start();
-    if (this.isPaused) this.songClock.pause();
+    if (this.isPaused || this.isStandby) this.songClock.pause();
   }
 
   stopSong(): void {
@@ -318,7 +323,25 @@ export class Session {
     }
   }
 
-  // --- pause ---------------------------------------------------------------
+  // --- standby and pause ---------------------------------------------------
+
+  get standby(): boolean {
+    return this.isStandby;
+  }
+
+  /**
+   * Hold the band while the players are edited. Unlike `pause()`, the camera,
+   * the hand tracking and `info().players[i].hands` stay live (the setup cards
+   * show who is in position), but no instrument detects or sounds, ringing
+   * notes are cut, the song holds its beat and nothing is scored.
+   */
+  setStandby(on: boolean): void {
+    if (on === this.isStandby) return;
+    this.isStandby = on;
+    for (const c of this.players) c.muted = on;
+    if (on) this.songClock?.pause();
+    else if (!this.isPaused) this.songClock?.resume();
+  }
 
   get paused(): boolean {
     return this.isPaused;
@@ -365,7 +388,7 @@ export class Session {
     if (!this.isPaused) return;
     this.isPaused = false;
     void this.camera.video.play().catch(() => {});
-    this.songClock?.resume();
+    if (!this.isStandby) this.songClock?.resume();
   }
 
   /** 'camera' while the live loop feeds frames, 'replay' while a recording does. */
