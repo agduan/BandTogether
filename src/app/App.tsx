@@ -4,7 +4,8 @@ import { Session, type SessionPhase, type SessionStats } from './session';
 import type { SessionInfo, SongInfo } from './sessionInfo';
 import { INSTRUMENT_IDS, INSTRUMENT_MODES, type PlayableInstrumentId } from './instruments';
 import type { CameraInfo } from '@/vision/camera';
-import type { PlayMode } from '@/core/types';
+import { bus } from '@/core/bus';
+import type { PlayMode, UiToastEvent } from '@/core/types';
 import { ConfigControls, DebugPanel, resetConfigControls } from '@/render/DebugPanel';
 import { SONGS } from '@/song/songs';
 import bassIconUrl from '../../bass.png';
@@ -27,16 +28,25 @@ const INSTRUMENT_LABELS: Record<PlayableInstrumentId, { label: string; mark: str
 
 type PlayerInstrument = PlayableInstrumentId | 'none';
 type PlayerCount = 1 | 2;
+type ToastKind = NonNullable<UiToastEvent['kind']>;
 
 interface PlayerSetup {
   instrument: PlayerInstrument;
   vocals: boolean;
 }
 
+interface ToastMessage {
+  id: number;
+  text: string;
+  kind: ToastKind;
+}
+
 type MultiplayerSession = Session & {
   /** Optional until the shared multiplayer seam lands. */
   setSinger?: (playerId: number | null) => void;
 };
+
+const TOAST_DURATION_MS = 2000;
 
 const PLAYER_DEFAULTS: [PlayerSetup, PlayerSetup] = [
   { instrument: 'drums', vocals: false },
@@ -204,6 +214,7 @@ function Stage({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sessionRef = useRef<Session | null>(null);
+  const nextToastIdRef = useRef(0);
   const [phase, setPhase] = useState<SessionPhase>('idle');
   const [detail, setDetail] = useState<string>('');
   const [stats, setStats] = useState<SessionStats | null>(null);
@@ -224,6 +235,7 @@ function Stage({
   const [micPending, setMicPending] = useState(false);
   const [echo, setEcho] = useState(config.singer.echo);
   const [reverb, setReverb] = useState(config.singer.reverb);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [, refreshConfig] = useState(0);
 
   playerSetupRef.current = { count: playerCount, players };
@@ -245,6 +257,25 @@ function Stage({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  useEffect(() => {
+    const timers = new Set<number>();
+    const unsubscribe = bus.on('ui.toast', (event) => {
+      const id = ++nextToastIdRef.current;
+      setToasts((current) => [...current, { id, text: event.text, kind: event.kind ?? 'info' }]);
+
+      const timer = window.setTimeout(() => {
+        setToasts((current) => current.filter((toast) => toast.id !== id));
+        timers.delete(timer);
+      }, TOAST_DURATION_MS);
+      timers.add(timer);
+    });
+
+    return () => {
+      unsubscribe();
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
   }, []);
 
   useEffect(() => {
@@ -546,6 +577,13 @@ function Stage({
         <div className="stage" style={{ aspectRatio: aspect }}>
           <video ref={videoRef} className="stage__video" />
           <canvas ref={canvasRef} className="stage__canvas" />
+          <div className="toast-stack" aria-live="polite" aria-relevant="additions">
+            {toasts.map((toast) => (
+              <div className="toast" data-kind={toast.kind} key={toast.id}>
+                {toast.text}
+              </div>
+            ))}
+          </div>
           {live && !showPlayerSetup && (
             <>
               {playerCount === 2 && <div className="stage__split-guide" aria-hidden="true" />}
@@ -573,6 +611,17 @@ function Stage({
                           {player.vocals && player.instrument !== 'none' ? ' · vocals' : ''}
                         </small>
                       </div>
+                      {playerCount === 2 && (
+                        <button
+                          className="player-badge__calibrate"
+                          type="button"
+                          onClick={() => sessionRef.current?.calibrate(playerId)}
+                          disabled={player.instrument === 'none' || hands === 0}
+                          aria-label={`Calibrate Player ${playerId + 1}`}
+                        >
+                          Calibrate
+                        </button>
+                      )}
                       <i aria-hidden="true" />
                     </div>
                   );
