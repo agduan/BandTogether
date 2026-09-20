@@ -87,7 +87,7 @@ describe('Session seams', () => {
     const info = s.info();
     expect(info.instrument).toBe('drums');
     expect(info.players).toHaveLength(1);
-    expect(info.players[0]).toMatchObject({ id: 0, instrument: 'drums', hands: 0, calibration: 'none' });
+    expect(info.players[0]).toMatchObject({ id: 0, instrument: 'drums', hands: 0, calibration: 'locked' }); // the default kit stays put until C
     expect(info.players[0].score.points).toBe(0);
     // HudInfo fields stay at the top level.
     expect(info).toMatchObject({ mode: 'easy', songTitle: null, songRunning: false, beatsPerBar: 4, paused: false });
@@ -139,12 +139,20 @@ describe('Session seams', () => {
     expect(toasts).toHaveLength(1);
     expect(toasts[0]).toMatchObject({ kind: 'warn' });
 
-    // An instrument that can calibrate gets the latest frame.
-    const inst = s.controllers[0].instrument;
-    inst.calibrate = () => true;
+    // The drum kit is placed with two presses: the first starts following the hands, the second pins it.
     s.lastFrame = { t: 1, aspect: 4 / 3, hands: [], inferenceMs: 0 };
     expect(s.calibrate()).toBe(true);
-    expect(seen.filter((e) => e.type === 'ui.toast')[1]).toMatchObject({ text: 'Calibrated', kind: 'success' });
+    expect(s.info().players[0].calibration).toBe('auto');
+    expect(s.calibrate()).toBe(true);
+    const texts = seen.filter((e) => e.type === 'ui.toast').slice(1);
+    expect(texts[0]).toMatchObject({ kind: 'success' });
+    expect(texts[1]).toMatchObject({ text: 'Kit locked', kind: 'success' });
+
+    // Any other instrument that can calibrate gets the latest frame and a plain answer.
+    s.setInstrument('guitar');
+    s.controllers[0].instrument.calibrate = () => true;
+    expect(s.calibrate()).toBe(true);
+    expect(seen.filter((e) => e.type === 'ui.toast')[3]).toMatchObject({ text: 'Calibrated', kind: 'success' });
     s.stop();
   });
 
@@ -288,6 +296,40 @@ describe('Session seams', () => {
     expect(s.info().players[0].score).toMatchObject({ perfect: 2, combo: 2, points: 200 });
     hit();
     expect(s.info().players[0].score.perfect).toBe(3);
+    s.stop();
+  });
+
+  it('calibrate takes the stage: it stops a running song and wakes a paused band', () => {
+    const video = { pause() {}, play: async () => {} } as unknown as HTMLVideoElement;
+    const canvas = { getContext: () => ({}) } as unknown as HTMLCanvasElement;
+    const s = new Session(video, canvas, structuredClone(DEFAULT_CONFIG));
+    s.setInstrument('drums');
+    s.overlay.drawLabel = () => {};
+    let loopRunning = false;
+    (s as unknown as { loop: { start(): void; stop(): void } }).loop = { start: () => void (loopRunning = true), stop: () => void (loopRunning = false) };
+    s.lastFrame = { t: 1, aspect: 4 / 3, hands: [], inferenceMs: 0 };
+    // Stand in for a running song clock.
+    let stopped = 0;
+    const clock = { running: true, song: { title: 'x' }, opts: {}, pause() {}, resume() {}, dispose: () => void ((clock.running = false), stopped++) };
+    (s as unknown as { songClock: unknown }).songClock = clock;
+    expect(s.songRunning).toBe(true);
+
+    s.pause();
+    expect(s.paused).toBe(true);
+    expect(s.calibrate()).toBe(true);
+    expect(s.songRunning).toBe(false);
+    expect(stopped).toBeGreaterThan(0);
+    expect(s.paused).toBe(false);
+    expect(loopRunning).toBe(true); // frames flow again, so the kit can follow the hands
+    expect(s.info().players[0].calibration).toBe('auto');
+
+    // Nothing to calibrate: the song is left alone.
+    s.setInstrument('bass');
+    clock.running = true;
+    (s as unknown as { songClock: unknown }).songClock = clock;
+    expect(s.calibrate()).toBe(false);
+    expect(s.songRunning).toBe(true);
+    (s as unknown as { songClock: unknown }).songClock = null;
     s.stop();
   });
 

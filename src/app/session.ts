@@ -168,7 +168,11 @@ export class Session {
     });
   }
 
-  /** Snap a player's instrument to where they are right now (the C key). Always answers with a toast. */
+  /**
+   * Snap a player's instrument to where they are right now (the C key; for
+   * drums, start or finish placing the kit). A running song is stopped and a
+   * paused band resumed first. Always answers with a toast.
+   */
   calibrate(playerId: PlayerId = 0): boolean {
     const instrument = this.slots[playerId]?.instrument;
     let ok = false;
@@ -176,8 +180,14 @@ export class Session {
     if (!instrument?.calibrate) text = `Nothing to calibrate on ${instrument?.id ?? 'that player'}`;
     else if (!this.lastFrame) text = 'Start the camera first';
     else {
+      // Calibrating takes the stage: the song stops and a paused band wakes up, so the hands are tracked live.
+      if (this.songRunning) this.stopSong();
+      if (this.isPaused) this.resume();
       ok = instrument.calibrate(this.lastFrame);
-      text = ok ? 'Calibrated' : 'Hold your hands where you want to play, then calibrate';
+      const view = instrument.view?.();
+      // The drum kit is placed with two presses: it follows the hands in between.
+      if (ok && view?.instrument === 'drums') text = view.calibration === 'auto' ? 'Rest your hands where you want the kit, then calibrate again to lock it' : 'Kit locked';
+      else text = ok ? 'Calibrated' : 'Hold your hands where you want to play, then calibrate';
     }
     bus.emit({ type: 'ui.toast', t: performance.now(), text, kind: ok ? 'success' : 'warn' });
     return ok;

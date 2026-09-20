@@ -22,8 +22,9 @@ export interface KitAnchor {
 }
 
 /**
- * 'none': fixed layout, nothing to calibrate. 'auto': following the player.
- * 'locked': `calibrate()` snapped height and scale.
+ * 'none': fixed layout, nothing to calibrate. 'auto': following the player
+ * while they place it (`calibrate()` toggles that). 'locked': staying put, at
+ * the default or where it was pinned.
  */
 export type CalibrationState = 'none' | 'auto' | 'locked';
 

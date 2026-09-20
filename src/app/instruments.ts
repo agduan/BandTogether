@@ -8,7 +8,7 @@ import { SilentVoice } from '@/audio/voices/silentVoice';
 import { BassPluckDetector } from '@/detectors/bassDetector';
 import { DebugOverlay } from '@/detectors/debugOverlay';
 import { DrumHitDetector, kitZones } from '@/detectors/drumHitDetector';
-import { GuitarStrumDetector } from '@/detectors/strumDetector';
+import { GuitarStrumDetector, type PlayerRegion } from '@/detectors/strumDetector';
 import { createFx, type FxLayer } from '@/render/fxRegistry';
 
 /** Instruments a player can pick, in picker order. */
@@ -33,6 +33,8 @@ export interface InstrumentDeps {
   playerId?: PlayerId;
   /** Song position, for views that show the chart chord. */
   song?: () => SongContext;
+  /** The slice of the frame this player owns (default: all of it; row 16 passes the halves). */
+  region?: () => PlayerRegion;
 }
 
 /**
@@ -59,20 +61,42 @@ function overlayFor(id: InstrumentId, deps: InstrumentDeps, detectors: Detector[
   return createFx(id, deps.config, deps.playerId ?? 0, view) ?? new DebugOverlay(detectors);
 }
 
+/**
+ * The config as one drummer's overlay should see it. `DrumsFx` draws from
+ * `kitGeometry(config.drum)`, not from the view, so it gets a config whose
+ * `drum.kit` and `drum.padHalfHeight` are this player's placed kit; every
+ * other key falls through to the shared config, so sliders stay live. One
+ * view per player: two drummers draw two kits.
+ */
+function drumConfigFor(config: Config, detector: DrumHitDetector): Config {
+  const drum: Config['drum'] = Object.create(config.drum, {
+    kit: { get: () => detector.kit, enumerable: true },
+    padHalfHeight: { get: () => detector.padHalfHeight, enumerable: true },
+  });
+  return Object.create(config, { drum: { value: drum, enumerable: true } });
+}
+
+/** Body-relative kit: a default spot inside the player's region; `calibrate` toggles placing it on the player. */
 export function createDrums(deps: InstrumentDeps): Instrument {
-  const { config, output, playerId = 0 } = deps;
-  const detector = new DrumHitDetector(config, playerId);
-  // Fixed screen layout until K1 makes the kit body-relative (anchor, calibration).
-  const view = (): InstrumentView => ({ instrument: 'drums', pads: detector.geometry, anchor: null, calibration: 'none' });
-  const fx = overlayFor('drums', deps, [detector], view);
+  const { config, output, playerId = 0, region } = deps;
+  const detector = new DrumHitDetector(config, playerId, region);
+  const view = (): InstrumentView => ({
+    instrument: 'drums',
+    pads: detector.geometry,
+    anchor: detector.anchor,
+    calibration: detector.calibration,
+  });
+  const fx = overlayFor('drums', { ...deps, config: drumConfigFor(config, detector) }, [detector], view);
   return {
     id: 'drums',
     detectors: [detector],
     voice: new DrumsVoice(output),
-    // Layout at the default 4:3 aspect; detectors and FX recompute per frame.
+    // The fixed layout at 4:3; nobody reads zones, the live pads are in the view.
     zones: kitZones(config.drum, 4 / 3),
     overlay: fx,
     view,
+    calibrate: (frame) => detector.calibrate(frame),
+    resetCalibration: () => detector.resetCalibration(),
     dispose: () => fx.dispose?.(),
   };
 }

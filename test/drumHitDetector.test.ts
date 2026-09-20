@@ -8,11 +8,15 @@ const ASPECT = 4 / 3;
 const DT = 1000 / 30;
 const PALM_SIZE = 0.11;
 
+/** The fixed kit (`drum.kit`), which the rules below are written against. */
 function config(overrides: Partial<Config['drum']> = {}): Pick<Config, 'drum' | 'filter'> {
   const c = structuredClone(DEFAULT_CONFIG);
-  Object.assign(c.drum, overrides);
+  Object.assign(c.drum, { bodyRelative: false }, overrides);
   return c;
 }
+
+/** The default: a kit that follows the player. */
+const bodyConfig = (overrides: Partial<Config['drum']> = {}) => config({ bodyRelative: true, ...overrides });
 
 /** A fist with fingers pointing down (drumming pose), wrist at `wrist`. */
 function hand(trackId: number, wrist: Vec2, t: number, dt: number, prevPalm?: Vec2): HandFrame {
@@ -38,14 +42,16 @@ function hand(trackId: number, wrist: Vec2, t: number, dt: number, prevPalm?: Ve
 }
 
 /** Frames for one hand following `wristYs` at a fixed x, 30 fps. */
-function sequence(trackId: number, x: number, wristYs: number[], t0 = 1000): VisionFrame[] {
+function sequence(trackId: number, x: number, wristYs: number[], t0 = 1000, playerId = 0): VisionFrame[] {
   let prev: Vec2 | undefined;
   return wristYs.map((y, i) => {
     const h = hand(trackId, { x, y }, t0 + i * DT, i === 0 ? 0 : DT, prev);
+    h.playerId = playerId;
     prev = h.palm;
     return { t: h.t, aspect: ASPECT, hands: [h], inferenceMs: 10 };
   });
 }
+
 
 describe('stick tip', () => {
   it('extends from the palm along wrist → middle MCP by stickLen · palmSize', () => {
@@ -157,5 +163,179 @@ describe('DrumHitDetector rules', () => {
     // Palm sits ~0.084 h below the wrist: wrist 0.45 → 0.75 carries the palm through the snare line.
     const hits = sequence(1, SNARE_X, [0.45, 0.45, 0.75]).flatMap((f) => det.update(f));
     expect(hits.map((h) => h.pad)).toEqual(['snare']);
+  });
+});
+
+describe('DrumHitDetector, body-relative kit', () => {
+  const LEFT_HALF = { x0: 0, x1: 0.5 };
+  const RIGHT_HALF = { x0: 0.5, x1: 1 };
+  const inside = (det: DrumHitDetector, region: { x0: number; x1: number }, aspect = ASPECT) => {
+    expect(det.geometry).toHaveLength(4);
+    for (const p of det.geometry) {
+      expect(p.x0).toBeGreaterThanOrEqual(region.x0 * aspect - 1e-9);
+      expect(p.x1).toBeLessThanOrEqual(region.x1 * aspect + 1e-9);
+    }
+  };
+  /** Replay `frames` the way a player uses the kit: C, rest for `placeMs`, C again, then play. */
+  const placeThenPlay = (det: DrumHitDetector, frames: VisionFrame[], placeMs = 400, each?: (f: VisionFrame) => void) => {
+    const t0 = frames[0].t;
+    det.calibrate();
+    return frames.flatMap((f) => {
+      if (det.calibration === 'auto' && f.t - t0 >= placeMs) det.calibrate();
+      const out = det.update(f);
+      each?.(f);
+      return out;
+    });
+  };
+  /** Two hands hovering 0.1 either side of `cx` for 400 ms, then the left one plunges (onto the snare). */
+  const drummer = (playerId: number, cx: number, trackId = 1): VisionFrame[] => {
+    const ys = [...Array<number>(13).fill(0.3), 0.35, 0.4, 0.45, 0.5];
+    const l = sequence(trackId, cx - 0.1 - 0.0128, ys, 1000, playerId);
+    const r = sequence(trackId + 1, cx + 0.1 - 0.0128, ys.map(() => 0.3), 1000, playerId);
+    return l.map((f, i) => ({ ...f, hands: [...f.hands, ...r[i].hands] }));
+  };
+
+  it('drums_body_5hits: untouched, the default kit ignores hands that are not over it', () => {
+    const det = new DrumHitDetector(bodyConfig());
+    expect(det.calibration).toBe('locked');
+    const [first, ...rest] = loadFixture('drums_body_5hits').frames;
+    det.update(first);
+    const before = det.anchor;
+    expect(rest.flatMap((f) => det.update(f))).toHaveLength(0); // hand #1 is over the default tom1, under its line
+    expect(det.anchor).toEqual(before); // and the kit did not go looking for them
+  });
+
+  it('drums_body_5hits: C, rest, C puts the kit on the hands, then five snare hits on the annotations', () => {
+    const rec = loadFixture('drums_body_5hits');
+    const det = new DrumHitDetector(bodyConfig());
+    const hits = placeThenPlay(det, rec.frames, 800);
+    expect(det.calibration).toBe('locked');
+    expect(hits.map((h) => h.pad)).toEqual(['snare', 'snare', 'snare', 'snare', 'snare']);
+    const expected = rec.annotations!.filter((a) => a.label === 'hit').map((a) => a.t);
+    hits.forEach((h, i) => expect(Math.abs(h.t - expected[i])).toBeLessThanOrEqual(DT + 0.01));
+
+    // Anchored between the two sticks, snare line one palm under where they hover; it has not drifted.
+    expect(det.anchor!.cx).toBeCloseTo(0.85, 2);
+    expect(det.anchor!.cy).toBeCloseTo(0.549 + PALM_SIZE, 2);
+    expect(det.anchor!.unit).toBeCloseTo(PALM_SIZE, 3);
+    // The fixed kit's snare is nowhere near these hands.
+    const fixed = new DrumHitDetector(config());
+    expect(rec.frames.flatMap((f) => fixed.update(f))).toHaveLength(0);
+  });
+
+  it('drums_body_upstrokes: sinking slowly through the line and whipping up produces no hits', () => {
+    const rec = loadFixture('drums_body_upstrokes');
+    const det = new DrumHitDetector(bodyConfig());
+    expect(placeThenPlay(det, rec.frames, 800)).toHaveLength(0);
+    expect(det.anchor!.cx).toBeCloseTo(0.85, 2);
+  });
+
+  it('the old fixed-kit fixtures stay silent where they should', () => {
+    const det = new DrumHitDetector(bodyConfig());
+    expect(loadFixture('drums_upstrokes').frames.flatMap((f) => det.update(f))).toHaveLength(0);
+  });
+
+  it('keeps the whole kit inside a half-frame region, and still plays there', () => {
+    const right = new DrumHitDetector(bodyConfig(), 0, () => RIGHT_HALF);
+    inside(right, RIGHT_HALF); // before anyone is seen
+    const hits = placeThenPlay(right, drummer(0, 1.0), 350, () => inside(right, RIGHT_HALF));
+    expect(hits.map((h) => h.pad)).toEqual(['snare']);
+    expect(right.anchor!.cx).toBeCloseTo(1.0, 3);
+    expect(right.anchor!.unit * 8).toBeCloseTo(0.92 * 0.5 * ASPECT, 9); // a 0.88 h kit does not fit a 0.67 h half
+    expect(right.padHalfHeight).toBeLessThan(DEFAULT_CONFIG.drum.padHalfHeight); // the art shrinks with it
+
+    // A player hugging the split, and one standing in the wrong half: the kit stops at the line.
+    const edge = new DrumHitDetector(bodyConfig(), 0, () => RIGHT_HALF);
+    placeThenPlay(edge, drummer(0, 0.72), 350);
+    inside(edge, RIGHT_HALF);
+    expect(Math.min(...edge.geometry.map((p) => p.x0))).toBeCloseTo(ASPECT / 2, 9);
+
+    const rec = loadFixture('drums_body_5hits'); // hands around x 0.85
+    const left = new DrumHitDetector(bodyConfig(), 0, () => LEFT_HALF);
+    placeThenPlay(left, rec.frames, 800, (f) => inside(left, LEFT_HALF, f.aspect));
+    expect(left.anchor!.cx).toBeLessThan(ASPECT / 2);
+  });
+
+  it('two drummers keep two kits: each follows, draws and detects their own player', () => {
+    const c = bodyConfig();
+    const a = new DrumHitDetector(c, 0, () => LEFT_HALF);
+    const b = new DrumHitDetector(c, 1, () => RIGHT_HALF);
+    const p1 = drummer(1, 1.0, 3);
+    const frames = drummer(0, 0.33, 1).map((f, i) => ({ ...f, hands: [...f.hands, ...p1[i].hands] }));
+    const hitsA = placeThenPlay(a, frames, 350);
+    const hitsB = placeThenPlay(b, frames, 350);
+    expect(a.anchor!.cx).toBeLessThan(ASPECT / 2);
+    expect(b.anchor!.cx).toBeGreaterThan(ASPECT / 2);
+    expect(hitsA.map((h) => [h.playerId, h.pad])).toEqual([[0, 'snare']]);
+    expect(hitsB.map((h) => [h.playerId, h.pad])).toEqual([[1, 'snare']]);
+    // `kit` is what each player's overlay draws from, in drum.kit's shape.
+    expect(kitGeometry({ ...c.drum, kit: a.kit }, ASPECT)).toEqual(a.geometry);
+    expect(kitGeometry({ ...c.drum, kit: b.kit }, ASPECT)).toEqual(b.geometry);
+    expect(a.kit.snare.x1).toBeLessThan(b.kit.snare.x0);
+  });
+
+  it('calibrate is a toggle: follow the hands, then pin; reset() keeps it, resetCalibration() forgets it', () => {
+    const det = new DrumHitDetector(bodyConfig());
+    const still = (cx: number, t0: number, n: number) => {
+      const ys = Array<number>(n).fill(0.35);
+      const l = sequence(1, cx - 0.1 - 0.0128, ys, t0);
+      const r = sequence(2, cx + 0.1 - 0.0128, ys, t0);
+      return l.map((f, i) => ({ ...f, hands: [...f.hands, ...r[i].hands] }));
+    };
+    // Resting anywhere does nothing until C is pressed...
+    const initial = det.anchor!;
+    expect(initial.cx).toBeCloseTo(ASPECT / 2, 9);
+    for (const f of still(0.8, 2000, 40)) det.update(f);
+    expect(det.anchor).toEqual(initial);
+
+    // ...then the kit comes over, and the second press pins it without a jump.
+    expect(det.calibrate()).toBe(true);
+    expect(det.calibration).toBe('auto');
+    for (const f of still(0.8, 4000, 60)) det.update(f);
+    const placed = det.anchor!;
+    expect(placed.cx).toBeCloseTo(0.8, 2);
+    expect(placed.cy).toBeCloseTo(0.35 + 0.249 + PALM_SIZE, 2);
+    expect(det.calibrate()).toBe(true);
+    expect(det.calibration).toBe('locked');
+    expect(det.anchor).toEqual(placed);
+    for (const f of still(0.6, 7000, 60)) det.update(f);
+    expect(det.anchor).toEqual(placed);
+
+    // A strike on the pinned kit: hand left of the anchor = snare.
+    const hits = sequence(1, 0.7, [0.35, 0.35, 0.45, 0.55], 10000).flatMap((f) => det.update(f));
+    expect(hits.map((x) => x.pad)).toEqual(['snare']);
+
+    det.reset(); // standby and back: the placement stays
+    expect(det.anchor).toEqual(placed);
+    det.resetCalibration();
+    expect(det.calibration).toBe('locked');
+    expect(det.anchor).toEqual(initial);
+
+    expect(new DrumHitDetector(config()).calibrate()).toBe(false); // fixed kit
+  });
+
+  it('one stroke through two stacked lines is one hit (per-hand refractory)', () => {
+    const c = bodyConfig();
+    // tom1 stacked right above the snare, same x-range.
+    c.drum.layout = { snare: { dx: 0, dy: 0, halfWidth: 1 }, tom1: { dx: 0, dy: -1, halfWidth: 1 } };
+    const det = new DrumHitDetector(c);
+    // Default anchor: snare line 0.68, tom1 line 0.57. Tip goes 0.449 -> 0.599 -> 0.749 over the centre.
+    const x = ASPECT / 2 - 0.0128;
+    const hits = sequence(1, x, [0.2, 0.2, 0.35, 0.5]).flatMap((f) => det.update(f));
+    expect(hits.map((h) => h.pad)).toEqual(['tom1']);
+    c.drum.trackRefractoryMs = 0;
+    const det2 = new DrumHitDetector(c);
+    expect(sequence(1, x, [0.2, 0.2, 0.35, 0.5]).flatMap((f) => det2.update(f)).map((h) => h.pad)).toEqual(['tom1', 'snare']);
+  });
+
+  it('scales the speed gate with the kit: a small far player triggers with a smaller stroke', () => {
+    const c = bodyConfig();
+    c.drum.anchor.defaultUnit = 0.22; // pretend the thresholds were tuned for a hand twice this big: scale 0.5
+    const det = new DrumHitDetector(c);
+    // 0.7 h/s: under vMin 1.0, over 0.5.
+    const ys = [...Array<number>(13).fill(0.3), 0.3233, 0.3467, 0.37, 0.3933, 0.4167, 0.44, 0.4633];
+    expect(sequence(1, 0.6, ys).flatMap((f) => det.update(f)).map((h) => h.pad)).toEqual(['snare']);
+    const det1 = new DrumHitDetector(bodyConfig());
+    expect(sequence(1, 0.6, ys).flatMap((f) => det1.update(f))).toHaveLength(0);
   });
 });
