@@ -328,8 +328,8 @@ export class GuitarFx implements OverlayLayer {
       ctx.fillStyle = '#fff';
       ctx.font = `700 ${Math.round(10 * scale)}px ui-monospace, monospace`;
       ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
-      ctx.fillText('STRUM HERE', (a.x + b.x) / 2, a.y - 7 * scale);
+      ctx.textBaseline = 'top';
+      ctx.fillText('STRUM HERE', (a.x + b.x) / 2, b.y + 7 * scale);
     }
     ctx.restore();
   }

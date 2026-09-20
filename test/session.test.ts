@@ -99,6 +99,20 @@ describe('Session seams', () => {
     s.stop();
   });
 
+  it('tracks, clamps, and resets an independent volume for each player', () => {
+    const s = makeSession();
+    s.setNumPlayers(2);
+    s.setPlayerVolume(0, 0.35);
+    s.setPlayerVolume(1, 2);
+    expect(s.info().players.map((player) => player.volume)).toEqual([0.35, 1]);
+
+    s.setPlayerVolume(1, -1);
+    expect(s.info().players[1].volume).toBe(0);
+    s.resetPlayerVolumes();
+    expect(s.info().players.map((player) => player.volume)).toEqual([1, 1]);
+    s.stop();
+  });
+
   it('setInstrument swaps the controller and uses registered guitar art', () => {
     const s = makeSession();
     const drums = s.controllers[0];

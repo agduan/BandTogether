@@ -99,6 +99,8 @@ export interface PlayerInfo {
   instrument: InstrumentId | null;
   /** Hands tracked for this player in the latest frame. */
   hands: number;
+  /** Linear instrument output level, 0..1. */
+  volume: number;
   calibration: CalibrationState;
   score: ScoreInfo;
 }

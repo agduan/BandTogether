@@ -233,6 +233,7 @@ function Stage({
   const [songId, setSongId] = useState(config.play.song);
   const [songRunning, setSongRunning] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [playerVolumes, setPlayerVolumes] = useState<[number, number]>([1, 1]);
   const [backingEnabled, setBackingEnabled] = useState(config.backing.enabled);
   const [bassEnabled, setBassEnabled] = useState(config.backing.parts.bass);
   const [drumsEnabled, setDrumsEnabled] = useState(config.backing.parts.drums);
@@ -324,6 +325,7 @@ function Stage({
       setSessionInfo(info);
       setSongRunning(info.songRunning);
       setPaused(info.paused);
+      setPlayerVolumes([info.players[0]?.volume ?? 1, info.players[1]?.volume ?? 1]);
       setBackingEnabled(info.backing.enabled);
       setBassEnabled(info.backing.parts.bass);
       setDrumsEnabled(info.backing.parts.drums);
@@ -432,6 +434,20 @@ function Stage({
     sessionRef.current?.setBacking(next);
   };
 
+  const changePlayerVolume = (playerId: 0 | 1, volume: number) => {
+    setPlayerVolumes((current) => {
+      const next: [number, number] = [...current];
+      next[playerId] = volume;
+      return next;
+    });
+    sessionRef.current?.setPlayerVolume(playerId, volume);
+  };
+
+  const resetPlayerVolumes = () => {
+    setPlayerVolumes([1, 1]);
+    sessionRef.current?.resetPlayerVolumes();
+  };
+
   const toggleBass = () => {
     const next = !bassEnabled;
     setBassEnabled(next);
@@ -519,13 +535,38 @@ function Stage({
       <div className="console">
         <div className="console__bar">
           <div className="control-section">
-            <span className="control-label">Band</span>
+            <div className="band-section__head">
+              <span className="control-label">Band</span>
+              <button
+                className="volume-reset"
+                type="button"
+                disabled={!live || visiblePlayers.every((_, playerId) => playerVolumes[playerId] === 1)}
+                onClick={resetPlayerVolumes}
+              >
+                Reset volume
+              </button>
+            </div>
             <div className="band-summary">
               {visiblePlayers.map((player, playerId) => (
-                <div key={playerId}>
-                  <span>P{playerId + 1}</span>
-                  <strong>{instrumentLabel(player.instrument)}</strong>
-                  {player.vocals && <small>+ vocals</small>}
+                <div className="band-summary__player" key={playerId}>
+                  <span className="band-summary__player-id">P{playerId + 1}</span>
+                  <span className="band-summary__instrument">
+                    <strong>{instrumentLabel(player.instrument)}</strong>
+                    {player.vocals && <small>+Vocals</small>}
+                  </span>
+                  <label className="player-volume">
+                    <span className="sr-only">Player {playerId + 1} volume</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={playerVolumes[playerId]}
+                      disabled={!live}
+                      onChange={(event) => changePlayerVolume(playerId as 0 | 1, Number(event.target.value))}
+                    />
+                    <output>{Math.round(playerVolumes[playerId] * 100)}%</output>
+                  </label>
                 </div>
               ))}
             </div>
@@ -705,14 +746,6 @@ function Stage({
                   onChange={(event) => changeReverb(Number(event.target.value))}
                 />
               </label>
-            </div>
-            <div className="vocals-sidebar__status" data-state={singerInfo?.error ? 'error' : singerInfo?.enabled ? 'live' : 'idle'}>
-              {singerInfo?.error ??
-                (singerId < 0
-                  ? 'Assign vocals in Edit players'
-                  : singerInfo?.enabled
-                    ? `Player ${singerId + 1} mic live`
-                    : `Player ${singerId + 1} mic off`)}
             </div>
           </div>
         </div>

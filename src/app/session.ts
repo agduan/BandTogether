@@ -1,3 +1,4 @@
+import * as Tone from 'tone';
 import type { Config } from './config';
 import { FpsMeter, FrameLoop } from '@/core/loop';
 import { Camera, type CameraInfo } from '@/vision/camera';
@@ -59,6 +60,9 @@ export class Session {
   readonly hud: Hud;
   /** Index = player id; null = that player holds no instrument ("None": they only watch or sing). */
   private readonly slots: (InstrumentController | null)[];
+  /** One post-instrument gain per player, shared across instrument swaps. */
+  private readonly playerGains: [Tone.Gain | null, Tone.Gain | null] = [null, null];
+  private readonly playerVolumes: [number, number] = [1, 1];
   /** Players the UI has not named since the last `setNumPlayers` (see there). */
   private unconfirmed: Set<PlayerId> | null = null;
   private songClock: SongClock | null = null;
@@ -120,7 +124,7 @@ export class Session {
   private createController(id: InstrumentId, playerId: PlayerId): InstrumentController {
     const instrument = createInstrument(id, {
       config: this.config,
-      output: () => this.audio.output,
+      output: () => this.playerOutput(playerId),
       playerId,
       song: () => this.songContext(),
       // Read live: going from one player to two squeezes everything into its half at once.
@@ -136,6 +140,26 @@ export class Session {
     });
     controller.muted = this.isStandby; // instruments picked while the players are edited stay quiet until Done
     return controller;
+  }
+
+  /** Linear player level, 0..1. Applies to every instrument that player selects. */
+  setPlayerVolume(playerId: PlayerId, volume: number): void {
+    const level = Math.min(1, Math.max(0, volume));
+    this.playerVolumes[playerId] = level;
+    this.playerGains[playerId]?.gain.rampTo(level, 0.02);
+  }
+
+  resetPlayerVolumes(): void {
+    for (let playerId = 0; playerId < MAX_PLAYERS; playerId++) this.setPlayerVolume(playerId as PlayerId, 1);
+  }
+
+  private playerOutput(playerId: PlayerId): Tone.Gain {
+    let gain = this.playerGains[playerId];
+    if (!gain) {
+      gain = new Tone.Gain(this.playerVolumes[playerId]).connect(this.audio.output);
+      this.playerGains[playerId] = gain;
+    }
+    return gain;
   }
 
   /**
@@ -315,6 +339,7 @@ export class Session {
         id,
         instrument: c?.instrument.id ?? null,
         hands: hands.filter((h) => h.playerId === id).length,
+        volume: this.playerVolumes[id],
         calibration: this.calibrationOf(id),
         score: this.score.info(id),
       };
@@ -625,6 +650,8 @@ export class Session {
     this.isPaused = false;
     this.stopSong();
     this.backing.dispose(); // before the engine: its nodes hang off the master
+    for (const gain of this.playerGains) gain?.dispose();
+    this.playerGains.fill(null);
     this.audio.stop();
     this.replayer?.stop();
     this.replayer = null;
