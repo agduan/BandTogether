@@ -558,6 +558,28 @@ summary:focus-visible {
   width: 100%;
 }
 
+/*
+ * Bass, Drums and Pad are indented under the Backing switch, with a rail down
+ * their left edge, so it reads that Backing off takes all three with it. The
+ * rail overlaps the 6px grid gap above each button plus the 1px border on each
+ * side (top/bottom resolve against the padding box), which joins the segments
+ * into one unbroken line from the Backing button to the bottom of the last part.
+ */
+.sidebar-toggles .backing-toggle--part {
+  position: relative;
+  width: auto;
+  margin-left: 15px;
+}
+
+.sidebar-toggles .backing-toggle--part::before {
+  content: '';
+  position: absolute;
+  top: -7px;
+  bottom: -1px;
+  left: -9px;
+  border-left: 1px solid var(--border);
+}
+
 .sidebar-field {
   display: grid;
   gap: 5px;

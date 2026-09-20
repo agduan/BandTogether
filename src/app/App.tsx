@@ -237,6 +237,7 @@ function Stage({
   const [backingEnabled, setBackingEnabled] = useState(config.backing.enabled);
   const [bassEnabled, setBassEnabled] = useState(config.backing.parts.bass);
   const [drumsEnabled, setDrumsEnabled] = useState(config.backing.parts.drums);
+  const [padEnabled, setPadEnabled] = useState(config.backing.parts.pad);
   const [sessionInfo, setSessionInfo] = useState<KaraokeSessionInfo | null>(null);
   const [micPending, setMicPending] = useState(false);
   const [microphones, setMicrophones] = useState<MicrophoneInfo[]>([]);
@@ -329,6 +330,7 @@ function Stage({
       setBackingEnabled(info.backing.enabled);
       setBassEnabled(info.backing.parts.bass);
       setDrumsEnabled(info.backing.parts.drums);
+      setPadEnabled(info.backing.parts.pad);
       setEcho(info.singer.echo);
       setReverb(info.singer.reverb);
       if (info.singer.deviceId) setMicDeviceId(info.singer.deviceId);
@@ -458,6 +460,12 @@ function Stage({
     const next = !drumsEnabled;
     setDrumsEnabled(next);
     sessionRef.current?.setBackingPart('drums', next);
+  };
+
+  const togglePad = () => {
+    const next = !padEnabled;
+    setPadEnabled(next);
+    sessionRef.current?.setBackingPart('pad', next);
   };
 
   const toggleSinger = async () => {
@@ -650,7 +658,7 @@ function Stage({
               </button>
               <button
                 type="button"
-                className="backing-toggle"
+                className="backing-toggle backing-toggle--part"
                 aria-pressed={bassEnabled}
                 disabled={!live || !backingEnabled}
                 onClick={toggleBass}
@@ -662,7 +670,7 @@ function Stage({
               </button>
               <button
                 type="button"
-                className="backing-toggle"
+                className="backing-toggle backing-toggle--part"
                 aria-pressed={drumsEnabled}
                 disabled={!live || !backingEnabled}
                 onClick={toggleDrums}
@@ -671,6 +679,18 @@ function Stage({
                 <span aria-hidden="true">{drumsEnabled ? '●' : '○'}</span>
                 Drums
                 <strong>{drumsEnabled ? 'On' : 'Off'}</strong>
+              </button>
+              <button
+                type="button"
+                className="backing-toggle backing-toggle--part"
+                aria-pressed={padEnabled}
+                disabled={!live || !backingEnabled}
+                onClick={togglePad}
+                title="The generated chord pad holding each bar. Off leaves the bass and the drums."
+              >
+                <span aria-hidden="true">{padEnabled ? '●' : '○'}</span>
+                Pad
+                <strong>{padEnabled ? 'On' : 'Off'}</strong>
               </button>
             </div>
           </div>
