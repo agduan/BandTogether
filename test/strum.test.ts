@@ -60,7 +60,7 @@ describe('GuitarStrumDetector on fixtures', () => {
     const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
     expect(mean(big.map((s) => s.velocity))).toBeGreaterThan(mean(small.map((s) => s.velocity)) + 0.1);
     for (const s of strums) {
-      expect(s).toMatchObject({ type: 'guitar.strum', playerId: 0, chord: null, chordConfidence: 0 });
+      expect(s).toMatchObject({ type: 'guitar.strum', playerId: 0, chord: null });
       expect(s.velocity).toBeGreaterThanOrEqual(DEFAULT_CONFIG.strum.floor);
       expect(s.velocity).toBeLessThanOrEqual(1);
       expect(s.u).toBeGreaterThan(0.3);

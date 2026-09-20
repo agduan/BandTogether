@@ -293,7 +293,6 @@ export class GuitarStrumDetector implements Detector<StrumEvent> {
       direction: s.direction,
       velocity: s.velocity,
       chord: null,
-      chordConfidence: 0,
       u: s.u,
     }));
   }

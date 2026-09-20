@@ -14,7 +14,7 @@ import { flattenBars } from '@/song/types';
 import { ASPECT, handAt } from './helpers/hands';
 
 const strum = (direction: 'down' | 'up', over: Partial<StrumEvent> = {}): StrumEvent => ({
-  type: 'guitar.strum', t: 1000, playerId: 0, direction, velocity: 0.8, chord: null, chordConfidence: 0, ...over,
+  type: 'guitar.strum', t: 1000, playerId: 0, direction, velocity: 0.8, chord: null, ...over,
 });
 const onChart = (chord: string): SongContext => ({ ...FREEPLAY_CONTEXT, bpm: 120, chord });
 const SPREAD = { spreadMinMs: 4, spreadMaxMs: 20, humanizeMs: 0 };

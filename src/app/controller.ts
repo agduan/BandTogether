@@ -18,8 +18,7 @@ export interface ControllerOptions {
 
 const EVENT_TYPES_BY_INSTRUMENT = {
   drums: ['drum.hit'],
-  guitar: ['guitar.strum', 'guitar.chord'],
-  keyboard: ['piano.press', 'piano.release'],
+  guitar: ['guitar.strum'],
   bass: ['bass.pluck'],
 } as const satisfies Record<Instrument['id'], readonly InstrumentEvent['type'][]>;
 
@@ -109,13 +108,8 @@ export class InstrumentController {
         else return;
         break;
       }
-      case 'piano.press': {
-        const r = this.resolver.resolvePress(e, song);
-        voice.trigger({ notes: [r.note], velocities: [r.velocity] });
-        break;
-      }
       default:
-        return; // chord changes and releases make no sound of their own
+        return;
     }
     this.audio.stamp(e, detectT);
   }

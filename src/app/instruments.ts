@@ -51,8 +51,9 @@ export function createInstrument(id: InstrumentId, deps: InstrumentDeps): Instru
       return createGuitar(deps);
     case 'bass':
       return createBass(deps);
-    case 'keyboard':
-      throw new Error('the keyboard was cut from the plan');
+    default:
+      // Ids reach here from the URL and the UI, so an unknown one must fail loudly, before anything is torn down.
+      throw new Error(`unknown instrument "${String(id)}"`);
   }
 }
 

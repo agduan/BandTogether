@@ -196,10 +196,11 @@ describe('BandScore', () => {
 describe('isScoredEvent', () => {
   it('scores only the event that sounds on the instrument being played', () => {
     const hit = { type: 'drum.hit', t: 0, playerId: 0, pad: 'snare', velocity: 1 } as const;
-    const chord = { type: 'guitar.chord', t: 0, playerId: 0, chord: 'G', confidence: 1 } as const;
+    const strum = { type: 'guitar.strum', t: 0, playerId: 0, direction: 'down', velocity: 1, chord: null } as const;
     expect(isScoredEvent(hit, 'drums')).toBe(true);
     expect(isScoredEvent(hit, 'guitar')).toBe(false);
-    expect(isScoredEvent(chord, 'guitar')).toBe(false);
+    expect(isScoredEvent(strum, 'guitar')).toBe(true);
+    expect(isScoredEvent(strum, 'drums')).toBe(false);
     expect(isScoredEvent({ type: 'bass.pluck', t: 0, playerId: 0, direction: 'down', velocity: 1, pitchBin: null }, 'bass')).toBe(true);
   });
 });

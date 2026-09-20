@@ -74,7 +74,7 @@ describe('InstrumentController', () => {
     const { controller, voice } = setup();
     bus.emit({ type: 'drum.hit', t: 1, playerId: 0, pad: 'kick', velocity: 0.9 });
     bus.emit({ type: 'drum.hit', t: 2, playerId: 1, pad: 'kick', velocity: 0.9 });
-    bus.emit({ type: 'guitar.strum', t: 3, playerId: 0, direction: 'down', velocity: 0.5, chord: null, chordConfidence: 0 });
+    bus.emit({ type: 'guitar.strum', t: 3, playerId: 0, direction: 'down', velocity: 0.5, chord: null });
     expect(voice.triggers).toEqual([{ sample: 'kick', velocity: 0.9 }]);
     controller.dispose();
   });

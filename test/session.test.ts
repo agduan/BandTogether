@@ -114,7 +114,7 @@ describe('Session seams', () => {
     expect(s.info().players[0].instrument).toBe('bass');
     expect(s.controllers[0].instrument.view?.()).toMatchObject({ instrument: 'bass', activeBin: null });
 
-    expect(() => s.setInstrument('keyboard')).toThrow();
+    expect(() => s.setInstrument('kazoo' as never)).toThrow(); // an id that does not exist
     expect(s.info().instrument).toBe('bass'); // a failed swap leaves the old instrument in place
     s.stop();
   });
@@ -175,12 +175,12 @@ describe('Session seams', () => {
     expect(s.controllers[0].muted).toBe(true);
     let strums = 0;
     s.controllers[0].instrument.voice.trigger = () => void strums++;
-    bus.emit({ type: 'guitar.strum', t: 2, playerId: 0, direction: 'down', velocity: 0.8, chord: null, chordConfidence: 0 });
+    bus.emit({ type: 'guitar.strum', t: 2, playerId: 0, direction: 'down', velocity: 0.8, chord: null });
     expect(strums).toBe(0);
 
     s.setStandby(false);
     expect(s.info().standby).toBe(false);
-    bus.emit({ type: 'guitar.strum', t: 3, playerId: 0, direction: 'down', velocity: 0.8, chord: null, chordConfidence: 0 });
+    bus.emit({ type: 'guitar.strum', t: 3, playerId: 0, direction: 'down', velocity: 0.8, chord: null });
     expect(strums).toBe(1);
     s.stop();
   });
@@ -226,7 +226,7 @@ describe('Session seams', () => {
     expect(s.info().band.tightness).toBeCloseTo(2 / 3);
 
     // Events for an instrument the player is not on make no sound and no score.
-    bus.emit({ type: 'guitar.strum', t: 1, playerId: 0, direction: 'down', velocity: 0.8, chord: null, chordConfidence: 0 });
+    bus.emit({ type: 'guitar.strum', t: 1, playerId: 0, direction: 'down', velocity: 0.8, chord: null });
     expect(s.info().players[0].score.miss).toBe(1);
 
     s.resetScore();

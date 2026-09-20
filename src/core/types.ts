@@ -22,7 +22,6 @@ export type PlayerId = number;
 export type TrackId = number;
 
 export type Handedness = 'Left' | 'Right';
-export type HandRole = 'strum' | 'fret' | 'drum' | 'piano';
 
 /** MediaPipe hand landmark indices (21 per hand). */
 export const LM = {
@@ -72,7 +71,6 @@ export interface HandFrame {
   /** Corrected + majority-voted MediaPipe label. A prior only. */
   handedness: Handedness;
   handednessScore: number;
-  role?: HandRole;
   /** 21 landmarks, unsmoothed. Triggers and velocities read this. */
   raw: Vec2[];
   /** 21 landmarks, One-Euro smoothed. Rendering and hover logic read this. */
@@ -122,34 +120,8 @@ export interface StrumEvent {
   velocity: number;
   /** Active chord at strum onset; null = unknown / none. */
   chord: ChordName | null;
-  chordConfidence: number;
   /** Where along the strings the hand crossed: 0 = neck end of the band, 1 = bridge end. Absent on injected strums. */
   u?: number;
-}
-
-/** Emitted on label change only, for the HUD. */
-export interface ChordEvent {
-  type: 'guitar.chord';
-  t: number;
-  playerId: PlayerId;
-  chord: ChordName | null;
-  confidence: number;
-}
-
-export interface PressEvent {
-  type: 'piano.press';
-  t: number;
-  playerId: PlayerId;
-  finger: number;
-  keyZone: number;
-  velocity: number;
-}
-
-export interface ReleaseEvent {
-  type: 'piano.release';
-  t: number;
-  playerId: PlayerId;
-  finger: number;
 }
 
 /** One plucked bass note. The bass is a one-string guitar: same stroke, one pitch. */
@@ -164,7 +136,7 @@ export interface BassPluckEvent {
   pitchBin: number | null;
 }
 
-export type InstrumentEvent = DrumHitEvent | StrumEvent | ChordEvent | PressEvent | ReleaseEvent | BassPluckEvent;
+export type InstrumentEvent = DrumHitEvent | StrumEvent | BassPluckEvent;
 
 /** Non-instrument events that also travel on the bus. */
 export interface VisionFrameEvent {
@@ -250,11 +222,10 @@ export interface StringSound {
 export interface NoteResolver {
   resolveStrum(e: StrumEvent, song: SongContext): StringSound;
   resolveDrum(e: DrumHitEvent, song: SongContext): { sample: string; velocity: number };
-  resolvePress(e: PressEvent, song: SongContext): { note: string; velocity: number };
   resolveBass(e: BassPluckEvent, song: SongContext): StringSound;
 }
 
-export type InstrumentId = 'guitar' | 'drums' | 'keyboard' | 'bass';
+export type InstrumentId = 'guitar' | 'drums' | 'bass';
 export type PlayMode = 'easy' | 'hard';
 
 /** A screen-space region (h-units) an instrument draws and reasons about. */

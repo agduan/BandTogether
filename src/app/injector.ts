@@ -16,12 +16,12 @@ export const INJECTOR_KEYS: ReadonlyArray<{ key: string; describe: string; make:
   {
     key: 'j',
     describe: 'strum down',
-    make: (t) => ({ type: 'guitar.strum', t, playerId: 0, direction: 'down', velocity: 0.8, chord: null, chordConfidence: 0 }),
+    make: (t) => ({ type: 'guitar.strum', t, playerId: 0, direction: 'down', velocity: 0.8, chord: null }),
   },
   {
     key: 'k',
     describe: 'strum up',
-    make: (t) => ({ type: 'guitar.strum', t, playerId: 0, direction: 'up', velocity: 0.6, chord: null, chordConfidence: 0 }),
+    make: (t) => ({ type: 'guitar.strum', t, playerId: 0, direction: 'up', velocity: 0.6, chord: null }),
   },
   {
     key: 'n',

@@ -1,4 +1,4 @@
-import type { BassPluckEvent, ChordName, DrumHitEvent, NoteResolver, PlayMode, PressEvent, SongContext, StringSound, StrumEvent } from '@/core/types';
+import type { BassPluckEvent, ChordName, DrumHitEvent, NoteResolver, PlayMode, SongContext, StringSound, StrumEvent } from '@/core/types';
 import { FREEPLAY_LOOP, STRING_COUNT, voicingFor } from '@/song/chords';
 import { grooveRole } from './groove';
 
@@ -80,10 +80,6 @@ export class HardMode implements NoteResolver {
     return chartStrum(e, song, this.freeplay);
   }
 
-  resolvePress(e: PressEvent, _song: SongContext): { note: string; velocity: number } {
-    return { note: 'C4', velocity: e.velocity };
-  }
-
   resolveBass(_e: BassPluckEvent, _song: SongContext): StringSound {
     // Pitch from `pitchBin` arrives with the bass voice (K5).
     return SILENT;
@@ -109,10 +105,6 @@ export class EasyMode implements NoteResolver {
 
   resolveStrum(e: StrumEvent, song: SongContext): StringSound {
     return chartStrum(e, song, this.freeplay);
-  }
-
-  resolvePress(e: PressEvent, _song: SongContext): { note: string; velocity: number } {
-    return { note: 'C4', velocity: e.velocity };
   }
 
   resolveBass(_e: BassPluckEvent, _song: SongContext): StringSound {

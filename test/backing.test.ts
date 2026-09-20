@@ -138,6 +138,6 @@ describe('partPlayedBy', () => {
     expect(partPlayedBy('drums')).toBe('drums');
     expect(partPlayedBy('bass')).toBe('bass');
     expect(partPlayedBy('guitar')).toBe('pad');
-    expect(partPlayedBy('keyboard')).toBeNull();
+    expect(partPlayedBy('kazoo' as never)).toBeNull(); // an id that does not exist replaces nothing
   });
 });
