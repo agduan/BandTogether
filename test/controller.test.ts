@@ -98,6 +98,7 @@ describe('InstrumentController', () => {
     const voice = fakeVoice();
     const stamps: InstrumentEvent[] = [];
     const resolver = new HardMode();
+    resolver.resolveBass = () => ({ notes: [], velocities: [] }); // e.g. a chord name nobody can parse
     const controller = new InstrumentController({
       playerId: 0,
       instrument: { id: 'bass', detectors: [], voice, zones: [], overlay: { draw: () => {} } },

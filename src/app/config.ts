@@ -171,15 +171,19 @@ export interface Config {
     floor: number;
     refractorySameMs: number;
     refractoryOppositeMs: number;
-    /** Pluck band, as fractions of the frame (same convention as `strum`). */
+    /** Strum band, as fractions of the player's region (same convention as `strum`). */
     bandY: number;
     bandHalfHeight: number;
     bandXMin: number;
     bandXMax: number;
-    /** Hard mode: the neck runs from the band's left edge to (neckX, neckY), in `bins` pitch bins. */
+    /** Unused since the bass became strum only (K9b removes them): the neck ran from the band's left edge to (neckX, neckY), in `bins` pitch bins. */
     neckX: number;
     neckY: number;
     bins: number;
+    /** dB, read live. */
+    volume: number;
+    /** Whole octaves up or down from the resolved note (E2..D#3, which laptop speakers carry); -1 = a real bass register for a PA. Read live. */
+    octave: number;
   };
   singer: {
     /** Runtime mic state. Permission is still requested only from the vocals panel. */
@@ -329,6 +333,8 @@ export const DEFAULT_CONFIG: Config = {
     neckX: 0.12,
     neckY: 0.42,
     bins: 6,
+    volume: -3,
+    octave: 0,
   },
   singer: { enabled: false, deviceId: '', gain: 1, echo: 0.25, reverb: 0.3 },
   backing: {

@@ -1,5 +1,6 @@
 import type { BassPluckEvent, ChordName, DrumHitEvent, NoteResolver, PlayMode, SongContext, StringSound, StrumEvent } from '@/core/types';
-import { FREEPLAY_LOOP, STRING_COUNT, voicingFor } from '@/song/chords';
+import { chordTones, FREEPLAY_LOOP, midiToNote, STRING_COUNT, voicingFor } from '@/song/chords';
+import { BASS_LOWEST } from './backing';
 import { grooveRole } from './groove';
 
 /**
@@ -65,8 +66,23 @@ function chartStrum(e: StrumEvent, song: SongContext, freeplay: FreeplayChords):
 }
 
 /**
+ * One bass note: the root of `chord`, in the register the backing band's bass
+ * plays (it is the part the player takes over). Down and up sound alike.
+ */
+export function bassNote(e: BassPluckEvent, chord: ChordName): StringSound {
+  const tones = chordTones(chord, BASS_LOWEST);
+  if (!tones) return SILENT;
+  return { notes: [midiToNote(tones.root)], velocities: [e.velocity], direction: e.direction, chord };
+}
+
+/** Bass is strum only, like the guitar: both modes play the chart root, or walk the free-play loop when no song runs. */
+function chartBass(e: BassPluckEvent, song: SongContext, freeplay: FreeplayChords): StringSound {
+  return bassNote(e, song.chord ?? freeplay.next(e.t));
+}
+
+/**
  * Hard mode: what you did is what you hear. Drums play the pad that was struck
- * at the struck velocity; the bass plays the neck bin under the fret hand (K5).
+ * at the struck velocity. Guitar and bass have no hard mode of their own.
  */
 export class HardMode implements NoteResolver {
   readonly id: PlayMode = 'hard';
@@ -80,9 +96,8 @@ export class HardMode implements NoteResolver {
     return chartStrum(e, song, this.freeplay);
   }
 
-  resolveBass(_e: BassPluckEvent, _song: SongContext): StringSound {
-    // Pitch from `pitchBin` arrives with the bass voice (K5).
-    return SILENT;
+  resolveBass(e: BassPluckEvent, song: SongContext): StringSound {
+    return chartBass(e, song, this.freeplay);
   }
 }
 
@@ -107,9 +122,8 @@ export class EasyMode implements NoteResolver {
     return chartStrum(e, song, this.freeplay);
   }
 
-  resolveBass(_e: BassPluckEvent, _song: SongContext): StringSound {
-    // Root of the chart chord arrives with the bass voice (K5).
-    return SILENT;
+  resolveBass(e: BassPluckEvent, song: SongContext): StringSound {
+    return chartBass(e, song, this.freeplay);
   }
 }
 

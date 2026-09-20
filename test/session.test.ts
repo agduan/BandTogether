@@ -326,7 +326,7 @@ describe('Session seams', () => {
     expect(s.info().players[0].calibration).toBe('auto');
 
     // Nothing to calibrate: the song is left alone.
-    s.setInstrument('bass');
+    s.setInstrument(null);
     clock.running = true;
     (s as unknown as { songClock: unknown }).songClock = clock;
     expect(s.calibrate()).toBe(false);
@@ -491,7 +491,7 @@ describe('two players', () => {
     expect(toasts().slice(1)).toEqual(['Player 1: Calibrated', 'Player 2: Calibrated']);
 
     // A player with nothing to calibrate is skipped; one with no hands in view is told so.
-    s.setInstrument('bass', 0);
+    s.setInstrument(null, 0);
     feed(s, { ...hands(33), hands: [] });
     expect(s.calibrate()).toBe(false);
     expect(toasts().slice(3)).toEqual(['Player 2: Hold your hands where you want to play, then calibrate']);

@@ -50,6 +50,14 @@ export function midiToNote(midi: number): string {
   return `${NOTE_NAMES[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
 }
 
+/** The inverse of `midiToNote`: 'F#2' is 42. Flats are read too; null for anything that is not a note name. */
+export function noteToMidi(note: string): number | null {
+  const m = /^([A-G])([#b]?)(-?\d+)$/.exec(note);
+  if (!m) return null;
+  const accidental = m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0;
+  return PITCH_CLASS[m[1]] + accidental + (Number(m[3]) + 1) * 12;
+}
+
 export interface ChordTones {
   root: number;
   third: number;

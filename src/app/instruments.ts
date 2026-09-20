@@ -3,12 +3,12 @@ import type { Config } from './config';
 import type { Detector, Instrument, InstrumentId, PlayerId, PlayMode, SongContext, TrackId, VisionFrame } from '@/core/types';
 import type { InstrumentView } from '@/core/views';
 import { DrumsVoice } from '@/audio/voices/drumsVoice';
+import { BassVoice } from '@/audio/voices/bassVoice';
 import { GuitarVoice } from '@/audio/voices/guitarVoice';
-import { SilentVoice } from '@/audio/voices/silentVoice';
 import { BassPluckDetector } from '@/detectors/bassDetector';
 import { DebugOverlay } from '@/detectors/debugOverlay';
 import { DrumHitDetector, kitZones } from '@/detectors/drumHitDetector';
-import { FULL_FRAME, GuitarStrumDetector, type PlayerRegion } from '@/detectors/strumDetector';
+import { FULL_FRAME, GuitarStrumDetector, type BandLayout, type PlayerRegion } from '@/detectors/strumDetector';
 import { createFx, type FxLayer } from '@/render/fxRegistry';
 
 /** Instruments a player can pick, in picker order. */
@@ -17,7 +17,8 @@ export type PlayableInstrumentId = (typeof INSTRUMENT_IDS)[number];
 
 /**
  * Modes each instrument supports. Guitar is easy only (no chord classifier);
- * if the toggle is left on hard it still plays the chart chord.
+ * if the toggle is left on hard it still plays the chart chord. So does the
+ * bass; its `hard` entry goes with the K9b cleanup.
  */
 export const INSTRUMENT_MODES: Record<PlayableInstrumentId, readonly PlayMode[]> = {
   drums: ['easy', 'hard'],
@@ -102,29 +103,30 @@ export function createDrums(deps: InstrumentDeps): Instrument {
   };
 }
 
-type BandPlacement = Pick<Config['strum'], 'bandY' | 'bandXMin' | 'bandXMax'>;
+type BandPlacement = Pick<BandLayout, 'bandY' | 'bandXMin' | 'bandXMax'>;
 /** A calibrated band is at least this much wider than the hand it was placed under. */
 const HAND_MARGIN = 1.2;
 
 /**
- * One guitar's band. Until its player places it, it is the shared
- * `config.strum` band, read live; a placement belongs to this guitar alone, so
- * two guitarists move two bands. `guitarConfigFor` shows it to the detector.
+ * One guitar's (or bass's) band. Until its player places it, it is the shared
+ * `config.strum` (`config.bass`) band, read live; a placement belongs to this
+ * instrument alone, so two guitarists move two bands. `bandConfigFor` shows it
+ * to the detector.
  */
 interface BandSlot {
   placed: BandPlacement | null;
 }
 
 /**
- * The config as one guitar's detector should see it: `strum.bandY / bandXMin /
- * bandXMax` are this guitar's placement once it has one; every other key, and
- * the band itself until then, falls through to the shared config, so the
- * thresholds stay live.
+ * The config as one guitar's (`strum`) or bass's (`bass`) detector should see
+ * it: that section's `bandY / bandXMin / bandXMax` are this instrument's
+ * placement once it has one; every other key, and the band itself until then,
+ * falls through to the shared config, so the thresholds stay live.
  */
-function guitarConfigFor(config: Config, slot: BandSlot): Config {
-  const key = (k: keyof BandPlacement) => ({ get: () => slot.placed?.[k] ?? config.strum[k], enumerable: true });
-  const strum: Config['strum'] = Object.create(config.strum, { bandY: key('bandY'), bandXMin: key('bandXMin'), bandXMax: key('bandXMax') });
-  return Object.create(config, { strum: { value: strum, enumerable: true } });
+function bandConfigFor(config: Config, section: 'strum' | 'bass', slot: BandSlot): Config {
+  const key = (k: keyof BandPlacement) => ({ get: () => slot.placed?.[k] ?? config[section][k], enumerable: true });
+  const view = Object.create(config[section], { bandY: key('bandY'), bandXMin: key('bandXMin'), bandXMax: key('bandXMax') });
+  return Object.create(config, { [section]: { value: view, enumerable: true } });
 }
 
 /**
@@ -137,7 +139,7 @@ function guitarConfigFor(config: Config, slot: BandSlot): Config {
  * leaves the region. Up and down, the centreline sits on the palm, the point
  * that crosses it. Null when the player has no hand in view.
  */
-function placeBand(strum: Config['strum'], frame: VisionFrame, playerId: PlayerId, strumTrackId: TrackId | null, region: PlayerRegion): BandPlacement | null {
+function placeBand(strum: BandLayout, frame: VisionFrame, playerId: PlayerId, strumTrackId: TrackId | null, region: PlayerRegion): BandPlacement | null {
   // The strummer if the roles know one, else the hand furthest to the strumming side (screen-right unless lefty).
   const hands = frame.hands.filter((h) => h.playerId === playerId).sort((a, b) => (strum.lefty ? a.palm.x - b.palm.x : b.palm.x - a.palm.x));
   const hand = hands.find((h) => h.trackId === strumTrackId) ?? hands[0];
@@ -162,7 +164,7 @@ function placeBand(strum: Config['strum'], frame: VisionFrame, playerId: PlayerI
 export function createGuitar(deps: InstrumentDeps): Instrument {
   const { config, output, playerId = 0, song, region = () => FULL_FRAME } = deps;
   const slot: BandSlot = { placed: null };
-  const detector = new GuitarStrumDetector(guitarConfigFor(config, slot), playerId, region);
+  const detector = new GuitarStrumDetector(bandConfigFor(config, 'strum', slot), playerId, region);
   const voice = new GuitarVoice(output, () => config.guitar);
   const view = (): InstrumentView => ({
     instrument: 'guitar',
@@ -190,25 +192,38 @@ export function createGuitar(deps: InstrumentDeps): Instrument {
   };
 }
 
-/** Silent until K5 (pluck detector, bass voice). */
+/**
+ * A one-note guitar, strum only: every stroke across the bass band, down or
+ * up, plays the root of the chart chord (the free-play loop's when no song
+ * runs). Placed per player with `calibrate`, like the guitar.
+ */
 export function createBass(deps: InstrumentDeps): Instrument {
-  const { config, playerId = 0, region } = deps;
-  const detector = new BassPluckDetector(config, playerId, region);
+  const { config, output, playerId = 0, region = () => FULL_FRAME } = deps;
+  const slot: BandSlot = { placed: null };
+  const detector = new BassPluckDetector(bandConfigFor(config, 'bass', slot), playerId, region);
+  const voice = new BassVoice(output, () => config.bass);
   const view = (): InstrumentView => ({
     instrument: 'bass',
     band: detector.band,
     neck: detector.neck,
+    // No fret-hand bins: the chart picks the note.
     activeBin: null,
-    note: null,
+    note: voice.note,
   });
   const fx = overlayFor('bass', deps, [detector], view);
   return {
     id: 'bass',
     detectors: [detector],
-    voice: new SilentVoice('bass'),
+    voice,
     zones: [],
     overlay: fx,
     view,
+    calibrate: (frame) => {
+      const placed = placeBand({ ...config.bass, lefty: config.strum.lefty }, frame, playerId, detector.roles.strumTrackId, region());
+      if (placed) slot.placed = placed;
+      return placed !== null;
+    },
+    resetCalibration: () => void (slot.placed = null),
     dispose: () => fx.dispose?.(),
   };
 }
