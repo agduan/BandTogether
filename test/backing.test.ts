@@ -77,8 +77,18 @@ describe('planStep', () => {
     expect(samples(8, 0, 0)).toContain('crash');
   });
 
-  it('bass: root on 1, the fifth on 3 (under a high root), inside E2..D#3 so laptop speakers carry it', () => {
-    const bass = (beat: number, sub: 0 | 1, chord: string) => parts(planStep(at(2, beat, sub, chord), true), 'bass')[0]?.notes?.[0];
+  it("bass 'root' (the default): one root a bar on the bar line, half a bar long, and nothing else", () => {
+    const bass = (beat: number, sub: 0 | 1, chord: string) => parts(planStep(at(2, beat, sub, chord), true), 'bass')[0];
+    expect(bass(0, 0, 'G')).toMatchObject({ notes: ['G2'], steps: 4 });
+    expect(bass(0, 0, 'Em')?.notes).toEqual(['E2']);
+    expect(bass(0, 0, 'C')?.notes).toEqual(['C3']);
+    for (const [beat, sub] of [[0, 1], [1, 0], [2, 0], [3, 0], [3, 1]] as const) {
+      expect(bass(beat, sub, 'G'), `beat ${beat}.${sub}`).toBeUndefined();
+    }
+  });
+
+  it("bass 'walk': root on 1, the fifth on 3 (under a high root), inside E2..D#3 so laptop speakers carry it", () => {
+    const bass = (beat: number, sub: 0 | 1, chord: string) => parts(planStep(at(2, beat, sub, chord), true, 'walk'), 'bass')[0]?.notes?.[0];
     expect(bass(0, 0, 'G')).toBe('G2');
     expect(bass(2, 0, 'G')).toBe('D3');
     expect(bass(3, 0, 'G')).toBe('G2');
@@ -88,6 +98,7 @@ describe('planStep', () => {
     expect(bass(2, 0, 'C')).toBe('G2');
     expect(bass(2, 0, 'D')).toBe('A2');
     expect(bass(0, 1, 'G')).toBeUndefined();
+    expect(bass(1, 1, 'G')).toBe('G2'); // the pickup into 3
   });
 
   it('pad: the triad of the bar, held to the bar line; comes back mid-bar only when it is not sounding', () => {

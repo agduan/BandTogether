@@ -1,6 +1,6 @@
 import * as Tone from 'tone';
 import type { Config } from '@/app/config';
-import type { InstrumentId } from '@/core/types';
+import type { InstrumentId, Voice } from '@/core/types';
 import { chordTones, midiToNote } from '@/song/chords';
 import type { ClockStep } from './songClock';
 import { DrumsVoice } from './voices/drumsVoice';
@@ -17,6 +17,7 @@ import { DrumsVoice } from './voices/drumsVoice';
 
 export type BackingPart = 'bass' | 'pad' | 'drums';
 export type BackingConfig = Config['backing'];
+export type BassLine = BackingConfig['bassLine'];
 
 /** The backing part a player on this instrument replaces. */
 const PART_OF: Partial<Record<InstrumentId, BackingPart>> = { drums: 'drums', bass: 'bass', guitar: 'pad' };
@@ -55,7 +56,7 @@ type StepInput = Pick<ClockStep, 'bar' | 'beat' | 'sub' | 'countIn' | 'beatsPerB
  * does not (after a pause, or the pad was just un-muted) the pad comes back on
  * the next beat instead of waiting for the next bar.
  */
-export function planStep(step: StepInput, padSounding: boolean): BackingNote[] {
+export function planStep(step: StepInput, padSounding: boolean, bassLine: BassLine = 'root'): BackingNote[] {
   if (step.countIn) return [];
   const { bar, beat, sub, beatsPerBar } = step;
   const out: BackingNote[] = [];
@@ -69,13 +70,20 @@ export function planStep(step: StepInput, padSounding: boolean): BackingNote[] {
 
   const bass = chordTones(step.chord, BASS_LOWEST);
   if (bass) {
-    // The fifth goes under a high root (C3 -> G2) so the line stays inside one octave.
-    const fifth = bass.root >= BASS_LOWEST + 5 ? bass.root - 5 : bass.fifth;
-    // Root on 1 (held), a root pickup on the "and" of 2, the fifth on 3, the root again on every later beat.
-    if (sub === 0 && beat === 0) out.push({ part: 'bass', notes: [midiToNote(bass.root)], steps: 3, velocity: 0.9 });
-    else if (sub === 1 && beat === 1) out.push({ part: 'bass', notes: [midiToNote(bass.root)], steps: 1, velocity: 0.7 });
-    else if (sub === 0 && beat === 2) out.push({ part: 'bass', notes: [midiToNote(fifth)], steps: 2, velocity: 0.8 });
-    else if (sub === 0 && beat > 2) out.push({ part: 'bass', notes: [midiToNote(bass.root)], steps: 2, velocity: 0.75 });
+    const root = midiToNote(bass.root);
+    if (bassLine === 'root') {
+      // One note a bar, half a bar long. The root lands with the chord change and then gets
+      // out of the way: the guitarist, not the synth, is the one filling the bar.
+      if (sub === 0 && beat === 0) out.push({ part: 'bass', notes: [root], steps: beatsPerBar, velocity: 0.85 });
+    } else {
+      // The fifth goes under a high root (C3 -> G2) so the line stays inside one octave.
+      const fifth = midiToNote(bass.root >= BASS_LOWEST + 5 ? bass.root - 5 : bass.fifth);
+      // Root on 1 (held), a root pickup on the "and" of 2, the fifth on 3, the root again on every later beat.
+      if (sub === 0 && beat === 0) out.push({ part: 'bass', notes: [root], steps: 3, velocity: 0.9 });
+      else if (sub === 1 && beat === 1) out.push({ part: 'bass', notes: [root], steps: 1, velocity: 0.7 });
+      else if (sub === 0 && beat === 2) out.push({ part: 'bass', notes: [fifth], steps: 2, velocity: 0.8 });
+      else if (sub === 0 && beat > 2) out.push({ part: 'bass', notes: [root], steps: 2, velocity: 0.75 });
+    }
   }
 
   const pad = chordTones(step.chord, PAD_LOWEST);
@@ -106,6 +114,11 @@ export class BackingBand {
   /** true once the synths exist (the drum samples may still be loading; the rest plays without them). */
   get ready(): boolean {
     return this.out !== null;
+  }
+
+  /** The band's kit, so the song clock's auto kick has something to play when nobody is drumming. */
+  get drumVoice(): Voice | null {
+    return this.drums;
   }
 
   /** Build the band on the current audio context; call after the engine started. Safe to call again after `dispose()`. */
@@ -150,7 +163,7 @@ export class BackingBand {
     this.drumsOut.volume.value = cfg.drumsVolume;
 
     if (step.countIn || muted.has('pad')) this.releasePad(time);
-    for (const n of planStep(step, this.padSounding)) {
+    for (const n of planStep(step, this.padSounding, cfg.bassLine)) {
       if (muted.has(n.part)) continue;
       const seconds = (n.steps ?? 1) * step.stepSec * GATE;
       if (n.part === 'drums') this.drums?.trigger({ sample: n.sample, velocity: n.velocity }, time);
@@ -162,6 +175,13 @@ export class BackingBand {
     }
     // The pad was written to end with the bar: the next bar attacks a new one.
     if (step.sub === 1 && step.beat === step.beatsPerBar - 1) this.padSounding = false;
+  }
+
+  /** Cut one part where it stands, for a part that was switched off mid-bar. */
+  releasePart(part: BackingPart): void {
+    if (part === 'bass') this.bass?.triggerRelease();
+    else if (part === 'pad') this.releasePad();
+    else this.drums?.releaseAll();
   }
 
   private releasePad(time?: number): void {

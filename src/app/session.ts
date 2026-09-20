@@ -13,7 +13,7 @@ import { createResolver, FREEPLAY_CONTEXT } from '@/audio/modes';
 import { BandScore, isScoredEvent } from '@/audio/score';
 import { SingerChannel } from '@/audio/singer';
 import { SongClock } from '@/audio/songClock';
-import type { InstrumentEvent, InstrumentId, PlayerId, PlayMode, SongContext } from '@/core/types';
+import type { InstrumentEvent, InstrumentId, PlayerId, PlayMode, SongContext, Voice } from '@/core/types';
 import { Hud } from '@/render/hud';
 import { getSong } from '@/song/songs';
 import { barAt, barCount } from '@/song/types';
@@ -143,8 +143,6 @@ export class Session {
     }
     this.slots[playerId] = next;
     this.score.resetPlayer(playerId); // a new instrument starts from zero
-    // The auto kick plays through a drummer's voice: follow the swap.
-    if (this.songClock) this.songClock.opts.kickVoice = this.drumsVoice();
   }
 
   /**
@@ -208,13 +206,21 @@ export class Session {
     return this.config.backing.enabled && this.backing.ready;
   }
 
-  /** Backing parts a human is playing; the band leaves those out. */
-  private humanParts(): Set<BackingPart> {
+  /** Switch one generated part on or off on its own; the rest of the band keeps playing. */
+  setBackingPart(part: BackingPart, on: boolean): void {
+    this.config.backing.parts[part] = on;
+    if (!on) this.backing.releasePart(part);
+  }
+
+  /** Parts the band leaves out: the ones a human is playing, plus the ones switched off. */
+  private mutedParts(): Set<BackingPart> {
     const parts = new Set<BackingPart>();
     for (const c of this.players) {
       const part = partPlayedBy(c.instrument.id);
       if (part) parts.add(part);
     }
+    const { parts: on } = this.config.backing;
+    for (const part of ['bass', 'pad', 'drums'] as const) if (!on[part]) parts.add(part);
     return parts;
   }
 
@@ -238,8 +244,15 @@ export class Session {
     this.score.reset();
   }
 
-  private drumsVoice() {
-    return this.players.find((c) => c.instrument.id === 'drums')?.instrument.voice ?? null;
+  /**
+   * What the easy-mode auto kick plays through: a human drummer's own kit, else
+   * the band's, but only once the band's groove has been switched off — with the
+   * groove running its own kick on 1 and 3 would double this one.
+   */
+  private kickVoice(): Voice | null {
+    const human = this.players.find((c) => c.instrument.id === 'drums')?.instrument.voice;
+    if (human) return human;
+    return this.backingOn && !this.config.backing.parts.drums ? this.backing.drumVoice : null;
   }
 
   /** Snapshot of everything the UI and HUD show. Cheap: poll it every frame or on a timer. */
@@ -266,7 +279,7 @@ export class Session {
       paused: this.isPaused,
       standby: this.isStandby,
       song: this.songInfo(),
-      backing: { enabled: this.config.backing.enabled },
+      backing: { enabled: this.config.backing.enabled, parts: { ...this.config.backing.parts } },
       singer: this.singer.info(),
       players,
       band: { tightness: this.score.tightness },
@@ -329,12 +342,12 @@ export class Session {
     this.songClock = new SongClock(getSong(songId), {
       click: play.click,
       autoKick: play.autoKick && this.mode === 'easy',
-      kickVoice: this.drumsVoice(),
+      kickVoice: () => this.kickVoice(),
       kickVelocity: () => this.config.backing.autoKickVelocity,
       carried: () => this.backingOn,
     });
     this.songClock.onStep((step, time) => {
-      if (this.backingOn) this.backing.step(step, time, this.humanParts());
+      if (this.backingOn) this.backing.step(step, time, this.mutedParts());
     });
     this.songClock.start();
     if (this.isPaused || this.isStandby) this.songClock.pause();

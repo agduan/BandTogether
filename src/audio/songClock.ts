@@ -16,8 +16,8 @@ export interface SongClockOptions {
   carried?: () => boolean;
   /** Play the kick drum on beats 1 and 3 automatically (easy mode). */
   autoKick: boolean;
-  /** Voice that plays the auto kick; nothing plays if missing. */
-  kickVoice?: Voice | null;
+  /** Voice that plays the auto kick, read on every kick so it can follow an instrument swap; nothing plays if it returns null. */
+  kickVoice?: () => Voice | null;
   /** Read on every kick, so it can be tuned live. */
   kickVelocity?: () => number;
 }
@@ -172,7 +172,7 @@ export class SongClock {
     const clicks = countIn || (this.opts.click && !this.opts.carried?.());
     if (clicks) this.click?.triggerAttackRelease(beat === 0 ? 'C6' : 'G5', '32n', time, beat === 0 ? 0.6 : 0.35);
     if (!countIn && this.opts.autoKick && isAutoKickBeat(beat)) {
-      this.opts.kickVoice?.trigger({ sample: 'kick', velocity: this.opts.kickVelocity?.() ?? 0.85 }, time);
+      this.opts.kickVoice?.()?.trigger({ sample: 'kick', velocity: this.opts.kickVelocity?.() ?? 0.85 }, time);
     }
 
     // The callback runs `lookAhead` before the beat sounds; stamp the audible time.

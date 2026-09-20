@@ -190,6 +190,10 @@ export interface Config {
   };
   backing: {
     enabled: boolean;
+    /** Parts the band is allowed to play. A part a human is playing is left out on top of this (see `partPlayedBy`). */
+    parts: { bass: boolean; pad: boolean; drums: boolean };
+    /** 'root': one root note a bar, staying out of the guitar's way. 'walk': root, pickup, fifth, root. */
+    bassLine: 'root' | 'walk';
     /** Level of the whole band, dB. */
     volume: number;
     /** Each part's level inside the band, dB. */
@@ -320,7 +324,16 @@ export const DEFAULT_CONFIG: Config = {
     bins: 6,
   },
   singer: { enabled: false, gain: 1, echo: 0.25, reverb: 0.3 },
-  backing: { enabled: true, volume: -6, bassVolume: -8, padVolume: -4, drumsVolume: -2, autoKickVelocity: 0.5 },
+  backing: {
+    enabled: true,
+    parts: { bass: true, pad: true, drums: true },
+    bassLine: 'root',
+    volume: -6,
+    bassVolume: -8,
+    padVolume: -4,
+    drumsVolume: -2,
+    autoKickVelocity: 0.5,
+  },
   score: { subdivision: 2, perfectMs: 60, goodMs: 130, window: 16, latencyMs: 0 },
   players: { count: 1, deadZone: 0.05 },
   guitar: { volume: -8, spreadMinMs: 4, spreadMaxMs: 20, humanizeMs: 1.5 },

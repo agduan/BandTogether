@@ -231,6 +231,8 @@ function Stage({
   const [songRunning, setSongRunning] = useState(false);
   const [paused, setPaused] = useState(false);
   const [backingEnabled, setBackingEnabled] = useState(config.backing.enabled);
+  const [bassEnabled, setBassEnabled] = useState(config.backing.parts.bass);
+  const [drumsEnabled, setDrumsEnabled] = useState(config.backing.parts.drums);
   const [sessionInfo, setSessionInfo] = useState<KaraokeSessionInfo | null>(null);
   const [micPending, setMicPending] = useState(false);
   const [echo, setEcho] = useState(config.singer.echo);
@@ -318,6 +320,8 @@ function Stage({
       setSongRunning(info.songRunning);
       setPaused(info.paused);
       setBackingEnabled(info.backing.enabled);
+      setBassEnabled(info.backing.parts.bass);
+      setDrumsEnabled(info.backing.parts.drums);
       setEcho(info.singer.echo);
       setReverb(info.singer.reverb);
     }, 250);
@@ -422,6 +426,18 @@ function Stage({
     const next = !backingEnabled;
     setBackingEnabled(next);
     sessionRef.current?.setBacking(next);
+  };
+
+  const toggleBass = () => {
+    const next = !bassEnabled;
+    setBassEnabled(next);
+    sessionRef.current?.setBackingPart('bass', next);
+  };
+
+  const toggleDrums = () => {
+    const next = !drumsEnabled;
+    setDrumsEnabled(next);
+    sessionRef.current?.setBackingPart('drums', next);
   };
 
   const toggleSinger = async () => {
@@ -732,6 +748,30 @@ function Stage({
               <span aria-hidden="true">{backingEnabled ? '●' : '○'}</span>
               Backing
               <strong>{backingEnabled ? 'On' : 'Off'}</strong>
+            </button>
+            <button
+              type="button"
+              className="backing-toggle backing-toggle--compact"
+              aria-pressed={bassEnabled}
+              disabled={!live || !backingEnabled}
+              onClick={toggleBass}
+              title="The generated bass under the band. Off leaves the drums and the pad."
+            >
+              <span aria-hidden="true">{bassEnabled ? '●' : '○'}</span>
+              Bass
+              <strong>{bassEnabled ? 'On' : 'Off'}</strong>
+            </button>
+            <button
+              type="button"
+              className="backing-toggle backing-toggle--compact"
+              aria-pressed={drumsEnabled}
+              disabled={!live || !backingEnabled}
+              onClick={toggleDrums}
+              title="The generated groove. Off leaves the easy-mode kick on 1 and 3 to hold the beat."
+            >
+              <span aria-hidden="true">{drumsEnabled ? '●' : '○'}</span>
+              Drums
+              <strong>{drumsEnabled ? 'On' : 'Off'}</strong>
             </button>
             <span className="hint">
               <kbd>C</kbd> calibrate · <kbd>space</kbd> kick
