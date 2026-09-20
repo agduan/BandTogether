@@ -1574,6 +1574,24 @@ summary:focus-visible {
   font-size: 0.57rem;
 }
 
+.mic-input-picker {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.mic-input-picker select {
+  min-width: 0;
+  width: 100%;
+  text-transform: none;
+}
+
 .singer-panel__effects {
   display: grid;
   grid-template-columns: 1fr;

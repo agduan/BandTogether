@@ -71,6 +71,8 @@ export interface SingerInfo {
   level: number;
   echo: number;
   reverb: number;
+  /** Browser ID of the active or selected audio input. */
+  deviceId: string;
   /** Last mic error (e.g. permission denied); null when fine. */
   error: string | null;
 }

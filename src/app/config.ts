@@ -182,8 +182,10 @@ export interface Config {
     bins: number;
   };
   singer: {
-    /** Open the mic as soon as the session starts. */
+    /** Runtime mic state. Permission is still requested only from the vocals panel. */
     enabled: boolean;
+    /** Empty uses the browser's default audio input. */
+    deviceId: string;
     gain: number;
     /** Wet amounts, 0..1. */
     echo: number;
@@ -328,7 +330,7 @@ export const DEFAULT_CONFIG: Config = {
     neckY: 0.42,
     bins: 6,
   },
-  singer: { enabled: false, gain: 1, echo: 0.25, reverb: 0.3 },
+  singer: { enabled: false, deviceId: '', gain: 1, echo: 0.25, reverb: 0.3 },
   backing: {
     enabled: true,
     parts: { bass: true, pad: true, drums: true },

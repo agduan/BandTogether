@@ -13,7 +13,7 @@ import { BackingBand, partPlayedBy, type BackingPart } from '@/audio/backing';
 import { AudioEngine } from '@/audio/engine';
 import { createResolver, FREEPLAY_CONTEXT } from '@/audio/modes';
 import { BandScore, isScoredEvent } from '@/audio/score';
-import { SingerChannel } from '@/audio/singer';
+import { SingerChannel, type MicrophoneInfo } from '@/audio/singer';
 import { SongClock } from '@/audio/songClock';
 import type { InstrumentEvent, InstrumentId, PlayerId, PlayMode, SongContext, Voice } from '@/core/types';
 import { Hud } from '@/render/hud';
@@ -594,12 +594,26 @@ export class Session {
     return this.camera.deviceId;
   }
 
+  listMicrophones(): Promise<MicrophoneInfo[]> {
+    return this.singer.list();
+  }
+
+  async switchMicrophone(deviceId: string): Promise<void> {
+    await this.singer.setDevice(deviceId);
+  }
+
+  get currentMicrophoneId(): string {
+    return this.singer.deviceId;
+  }
+
   stop(): void {
     this.disposed = true;
+    // The MediaStream and its Tone nodes hang off the master, so release them
+    // before teardown disposes the audio engine.
+    this.singer.dispose();
     this.teardown();
     for (const c of this.players) c.dispose();
     this.unsubscribeScore();
-    this.singer.dispose();
     this.hud.dispose();
     this.onPhase('idle');
   }

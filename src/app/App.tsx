@@ -4,6 +4,7 @@ import { Session, type SessionPhase, type SessionStats } from './session';
 import type { SessionInfo, SongInfo } from './sessionInfo';
 import { INSTRUMENT_IDS, INSTRUMENT_MODES, type PlayableInstrumentId } from './instruments';
 import type { CameraInfo } from '@/vision/camera';
+import type { MicrophoneInfo } from '@/audio/singer';
 import { bus } from '@/core/bus';
 import type { PlayMode, UiToastEvent } from '@/core/types';
 import { ConfigControls, DebugPanel, resetConfigControls } from '@/render/DebugPanel';
@@ -235,6 +236,8 @@ function Stage({
   const [drumsEnabled, setDrumsEnabled] = useState(config.backing.parts.drums);
   const [sessionInfo, setSessionInfo] = useState<KaraokeSessionInfo | null>(null);
   const [micPending, setMicPending] = useState(false);
+  const [microphones, setMicrophones] = useState<MicrophoneInfo[]>([]);
+  const [micDeviceId, setMicDeviceId] = useState(config.singer.deviceId);
   const [echo, setEcho] = useState(config.singer.echo);
   const [reverb, setReverb] = useState(config.singer.reverb);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -324,6 +327,7 @@ function Stage({
       setDrumsEnabled(info.backing.parts.drums);
       setEcho(info.singer.echo);
       setReverb(info.singer.reverb);
+      if (info.singer.deviceId) setMicDeviceId(info.singer.deviceId);
     }, 250);
 
     return () => {
@@ -332,6 +336,8 @@ function Stage({
       sessionRef.current = null;
       setSession(null);
       setSessionInfo(null);
+      setMicrophones([]);
+      setMicDeviceId('');
     };
   }, [active, config]);
 
@@ -447,6 +453,27 @@ function Stage({
     try {
       await current.singer.setEnabled(!current.singer.enabled);
       setSessionInfo(current.info() as KaraokeSessionInfo);
+      if (current.singer.enabled) {
+        setMicrophones(await current.listMicrophones());
+        setMicDeviceId(current.currentMicrophoneId);
+      }
+    } finally {
+      setMicPending(false);
+    }
+  };
+
+  const onPickMicrophone = async (id: string) => {
+    const current = sessionRef.current;
+    if (!current || micPending) return;
+    setMicDeviceId(id);
+    setMicPending(true);
+    try {
+      await current.switchMicrophone(id);
+      setSessionInfo(current.info() as KaraokeSessionInfo);
+      if (current.singer.enabled) {
+        setMicrophones(await current.listMicrophones());
+        setMicDeviceId(current.currentMicrophoneId);
+      }
     } finally {
       setMicPending(false);
     }
@@ -832,7 +859,7 @@ function Stage({
             <h2 id="singer-title">Vocals</h2>
             <p>
               {singerId >= 0 ? `Assigned to Player ${singerId + 1}. ` : 'Assign vocals from Edit Players. '}
-              Use wired headphones to avoid feedback.
+              Start with wired headphones; laptop speakers may feed back.
             </p>
           </div>
         </div>
@@ -860,6 +887,24 @@ function Stage({
               <b style={{ width: `${Math.round((singerInfo?.level ?? 0) * 100)}%` }} />
             </i>
           </div>
+          {microphones.length > 0 && (
+            <label className="mic-input-picker">
+              <span>Input</span>
+              <select
+                className="select select--sm"
+                value={micDeviceId}
+                disabled={micPending}
+                onChange={(event) => void onPickMicrophone(event.target.value)}
+                aria-label="Microphone input"
+              >
+                {microphones.map((microphone) => (
+                  <option key={microphone.deviceId} value={microphone.deviceId}>
+                    {microphone.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <small>Permission is requested only when you press Enable.</small>
         </div>
 

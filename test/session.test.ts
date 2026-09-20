@@ -335,11 +335,11 @@ describe('Session seams', () => {
     s.stop();
   });
 
-  it('the singer stub reports an error and a toast instead of opening the mic', async () => {
+  it('an unavailable microphone reports an error and a toast without changing the session', async () => {
     const s = makeSession();
     await s.singer.setEnabled(true);
     expect(s.info().singer.enabled).toBe(false);
-    expect(s.info().singer.error).toBeTruthy();
+    expect(s.info().singer.error).toContain('No microphone available');
     expect(seen.some((e) => e.type === 'ui.toast')).toBe(true);
     s.singer.setEcho(2);
     expect(s.info().singer.echo).toBe(1);
