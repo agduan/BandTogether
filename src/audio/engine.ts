@@ -30,7 +30,7 @@ export class AudioEngine {
     if (this.state === 'idle' || this.state === 'error') {
       this.state = 'loading';
       Tone.setContext(new Tone.Context({ latencyHint: this.config.latencyHint, lookAhead: this.config.lookAhead }));
-      this.master = new Tone.Gain(0.9).toDestination();
+      this.master = new Tone.Gain(this.config.masterGain).toDestination();
       await Promise.all([...this.voices.values()].map((v) => v.load()));
     }
     try {

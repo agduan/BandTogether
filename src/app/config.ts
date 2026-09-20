@@ -95,6 +95,12 @@ export interface Config {
   audio: {
     lookAhead: number;
     latencyHint: 'interactive' | 'balanced' | 'playback';
+    /**
+     * Linear gain of the master, applied when the engine starts. There is no
+     * limiter (it would add latency to every hit), so this is the headroom:
+     * lower it if a full band crackles, and turn the speakers up instead.
+     */
+    masterGain: number;
   };
   play: {
     /** 'easy': the song decides the notes. 'hard': the gesture does. */
@@ -148,6 +154,8 @@ export interface Config {
     bassVolume: number;
     padVolume: number;
     drumsVolume: number;
+    /** Velocity (0..1) of the easy-mode auto kick, which plays through the drummer's own kit at full level. */
+    autoKickVelocity: number;
   };
   score: {
     /** Grid lines per beat that count as on-beat (2 = eighths). */
@@ -228,7 +236,7 @@ export const DEFAULT_CONFIG: Config = {
     strummerOnly: true,
     roleSwapMs: 500,
   },
-  audio: { lookAhead: 0.01, latencyHint: 'interactive' },
+  audio: { lookAhead: 0.01, latencyHint: 'interactive', masterGain: 0.7 },
   play: { mode: 'easy', song: 'viva-la-vida', click: true, autoKick: true, autostartSong: false },
   debug: { panel: false, skeleton: true, latencyMeter: false, autostart: false },
   bass: {
@@ -247,7 +255,7 @@ export const DEFAULT_CONFIG: Config = {
     bins: 6,
   },
   singer: { enabled: false, gain: 1, echo: 0.25, reverb: 0.3 },
-  backing: { enabled: true, volume: -10, bassVolume: -8, padVolume: -16, drumsVolume: -4 },
+  backing: { enabled: true, volume: -6, bassVolume: -8, padVolume: -4, drumsVolume: -2, autoKickVelocity: 0.5 },
   score: { subdivision: 2, perfectMs: 60, goodMs: 130, window: 16, latencyMs: 0 },
   players: { count: 1, deadZone: 0.05 },
   guitar: { volume: -8, spreadMinMs: 4, spreadMaxMs: 20, humanizeMs: 1.5 },

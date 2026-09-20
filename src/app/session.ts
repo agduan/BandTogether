@@ -320,6 +320,7 @@ export class Session {
       click: play.click,
       autoKick: play.autoKick && this.mode === 'easy',
       kickVoice: this.drumsVoice(),
+      kickVelocity: () => this.config.backing.autoKickVelocity,
       carried: () => this.backingOn,
     });
     this.songClock.onStep((step, time) => {

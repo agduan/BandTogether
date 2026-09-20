@@ -45,8 +45,9 @@ describe('count-in grid', () => {
 
 describe('chordTones', () => {
   it('puts the root at or above the floor and stacks the triad on it', () => {
-    expect(chordTones('G', BASS_LOWEST)).toEqual({ root: 43, third: 47, fifth: 50 }); // G2
-    expect(chordTones('C', BASS_LOWEST)).toEqual({ root: 36, third: 40, fifth: 43 }); // C2 is the floor itself
+    expect(chordTones('G', 40)).toEqual({ root: 43, third: 47, fifth: 50 }); // G2
+    expect(chordTones('C', 36)).toEqual({ root: 36, third: 40, fifth: 43 }); // C2 is the floor itself
+    expect(chordTones('C', 40)?.root).toBe(48); // the next C up
     expect(chordTones('Em', PAD_LOWEST)).toEqual({ root: 52, third: 55, fifth: 59 }); // E3 G3 B3
     expect(chordTones('F#m7', PAD_LOWEST)).toMatchObject({ root: 54, third: 57 });
     expect(chordTones('Bb', 36)?.root).toBe(46);
@@ -76,13 +77,16 @@ describe('planStep', () => {
     expect(samples(8, 0, 0)).toContain('crash');
   });
 
-  it('bass: root on 1, the fifth on 3, always inside the chord', () => {
+  it('bass: root on 1, the fifth on 3 (under a high root), inside E2..D#3 so laptop speakers carry it', () => {
     const bass = (beat: number, sub: 0 | 1, chord: string) => parts(planStep(at(2, beat, sub, chord), true), 'bass')[0]?.notes?.[0];
     expect(bass(0, 0, 'G')).toBe('G2');
     expect(bass(2, 0, 'G')).toBe('D3');
     expect(bass(3, 0, 'G')).toBe('G2');
     expect(bass(0, 0, 'Em')).toBe('E2');
     expect(bass(2, 0, 'Em')).toBe('B2');
+    expect(bass(0, 0, 'C')).toBe('C3');
+    expect(bass(2, 0, 'C')).toBe('G2');
+    expect(bass(2, 0, 'D')).toBe('A2');
     expect(bass(0, 1, 'G')).toBeUndefined();
   });
 
@@ -113,7 +117,7 @@ describe('planStep', () => {
         }
       }
     }
-    expect(midiToNote(BASS_LOWEST)).toBe('C2');
+    expect(midiToNote(BASS_LOWEST)).toBe('E2');
     expect(midiToNote(PAD_LOWEST)).toBe('E3');
   });
 });

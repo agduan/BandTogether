@@ -36,8 +36,12 @@ export interface BackingNote {
   velocity: number;
 }
 
-/** Lowest bass root (C2): low enough to sit under the guitar, high enough for laptop speakers to show its harmonics. */
-export const BASS_LOWEST = 36;
+/**
+ * Lowest bass root (E2, a bass guitar's E string an octave up). Laptop speakers
+ * give nothing below about 150 Hz, so the bass is heard through its harmonics:
+ * the register is kept this high and the filter this open on purpose.
+ */
+export const BASS_LOWEST = 40;
 /** Lowest pad root (E3): the charts' G C D Em land between E3 and A4. */
 export const PAD_LOWEST = 52;
 /** A crash marks the top of every this many bars (the charts are 8 bars long). */
@@ -65,17 +69,19 @@ export function planStep(step: StepInput, padSounding: boolean): BackingNote[] {
 
   const bass = chordTones(step.chord, BASS_LOWEST);
   if (bass) {
+    // The fifth goes under a high root (C3 -> G2) so the line stays inside one octave.
+    const fifth = bass.root >= BASS_LOWEST + 5 ? bass.root - 5 : bass.fifth;
     // Root on 1 (held), a root pickup on the "and" of 2, the fifth on 3, the root again on every later beat.
     if (sub === 0 && beat === 0) out.push({ part: 'bass', notes: [midiToNote(bass.root)], steps: 3, velocity: 0.9 });
     else if (sub === 1 && beat === 1) out.push({ part: 'bass', notes: [midiToNote(bass.root)], steps: 1, velocity: 0.7 });
-    else if (sub === 0 && beat === 2) out.push({ part: 'bass', notes: [midiToNote(bass.fifth)], steps: 2, velocity: 0.8 });
+    else if (sub === 0 && beat === 2) out.push({ part: 'bass', notes: [midiToNote(fifth)], steps: 2, velocity: 0.8 });
     else if (sub === 0 && beat > 2) out.push({ part: 'bass', notes: [midiToNote(bass.root)], steps: 2, velocity: 0.75 });
   }
 
   const pad = chordTones(step.chord, PAD_LOWEST);
   if (pad && sub === 0 && (beat === 0 || !padSounding)) {
     const notes = [pad.root, pad.third, pad.fifth].map(midiToNote);
-    out.push({ part: 'pad', notes, steps: (beatsPerBar - beat) * 2, velocity: 0.6 });
+    out.push({ part: 'pad', notes, steps: (beatsPerBar - beat) * 2, velocity: 0.7 });
   }
   return out;
 }
@@ -87,6 +93,7 @@ export class BackingBand {
   private out: Tone.Volume | null = null;
   private bass: Tone.MonoSynth | null = null;
   private pad: Tone.PolySynth | null = null;
+  private padFilter: Tone.Filter | null = null;
   private drumsOut: Tone.Volume | null = null;
   private drums: DrumsVoice | null = null;
   private padSounding = false;
@@ -111,14 +118,16 @@ export class BackingBand {
       oscillator: { type: 'sawtooth' },
       envelope: { attack: 0.005, decay: 0.2, sustain: 0.6, release: 0.12 },
       filter: { type: 'lowpass', Q: 1.5, rolloff: -24 },
-      filterEnvelope: { attack: 0.005, decay: 0.15, sustain: 0.35, release: 0.2, baseFrequency: 110, octaves: 2.6 },
+      filterEnvelope: { attack: 0.005, decay: 0.25, sustain: 0.5, release: 0.2, baseFrequency: 200, octaves: 3 },
       volume: cfg.bassVolume,
     }).connect(out);
+    // Detuned saws through a low-pass: a warm string-machine pad that small speakers still carry.
+    this.padFilter = new Tone.Filter({ type: 'lowpass', frequency: 2000, rolloff: -12 }).connect(out);
     this.pad = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: 'triangle' },
+      oscillator: { type: 'fatsawtooth', count: 3, spread: 18 },
       envelope: { attack: 0.18, decay: 0.4, sustain: 0.75, release: 0.5 },
       volume: cfg.padVolume,
-    }).connect(out);
+    }).connect(this.padFilter);
     const drumsOut = new Tone.Volume(cfg.drumsVolume).connect(out);
     this.drumsOut = drumsOut;
     const drums = new DrumsVoice(() => drumsOut);
@@ -173,9 +182,11 @@ export class BackingBand {
     this.releaseAll();
     this.bass?.dispose();
     this.pad?.dispose();
+    this.padFilter?.dispose();
     this.drumsOut?.dispose();
     this.out?.dispose();
     this.bass = this.pad = null;
+    this.padFilter = null;
     this.drums = null;
     this.drumsOut = this.out = null;
   }
