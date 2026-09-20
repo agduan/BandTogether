@@ -81,39 +81,38 @@ describe('fitAnchor', () => {
 });
 
 describe('KitAnchorTracker', () => {
-  it('sits at the default, centred in the region, until a player rests', () => {
+  const DEFAULT = { cx: ASPECT / 2, cy: 0.68, unit: 0.11 };
+
+  it('starts at the hard-coded default, centred in the region, and never moves by itself', () => {
     const tr = new KitAnchorTracker(opts);
-    expect(tr.anchor(layout, ASPECT, FULL_FRAME)).toEqual({ cx: ASPECT / 2, cy: 0.68, unit: 0.11 });
+    expect(tr.anchor(layout, ASPECT, FULL_FRAME)).toEqual(DEFAULT);
     expect(tr.anchor(layout, ASPECT, RIGHT_HALF).cx).toBeCloseTo(0.75 * ASPECT, 9);
-    hold(tr, hands(0.4, 0.5, 2), 0, 1000); // moving hands place nothing
-    expect(tr.placed).toBe(false);
-    expect(tr.state).toBe('auto');
-  });
-
-  it('lands on hands that rest for restMs, and then stays put: it does not wander', () => {
-    const tr = new KitAnchorTracker(opts);
-    let t = hold(tr, hands(0.5, 0.5), 0, 200);
-    expect(tr.placed).toBe(false);
-    t = hold(tr, hands(0.5, 0.5), t + DT, 100);
     expect(tr.state).toBe('locked');
-    const landed = { cx: 0.5, cy: 0.61, unit: 0.11 };
-    expect(tr.anchor(layout, ASPECT, FULL_FRAME)).toEqual(landed);
 
-    // The player shuffles, rests somewhere else, comes closer: the kit is where it landed.
-    hold(tr, hands(0.7, 0.4, 0, 0.14), t + DT, 5000);
-    expect(tr.anchor(layout, ASPECT, FULL_FRAME)).toEqual(landed);
+    // Resting hands, moving hands, hands coming and going: nothing places it.
+    let t = hold(tr, hands(0.4, 0.5), 0, 3000);
+    t = hold(tr, hands(0.9, 0.3, 2), t + DT, 1000);
+    t = hold(tr, [], t + DT, 3000);
+    hold(tr, hands(0.8, 0.4, 0, 0.14), t + DT, 3000);
+    expect(tr.placed).toBe(false);
+    expect(tr.anchor(layout, ASPECT, FULL_FRAME)).toEqual(DEFAULT);
   });
 
   it('toggle: the kit follows the resting hands, the next toggle pins it exactly where it is', () => {
     const tr = new KitAnchorTracker(opts);
-    let t = hold(tr, hands(0.5, 0.5), 0, 400);
     expect(tr.toggle()).toBe(true);
     expect(tr.state).toBe('auto');
-    expect(tr.anchor(layout, ASPECT, FULL_FRAME).cx).toBe(0.5); // starting moves nothing
+    expect(tr.anchor(layout, ASPECT, FULL_FRAME)).toEqual(DEFAULT); // starting moves nothing
 
-    // Fast hands are ignored; resting ones pull the kit over within a second, position, height and size.
-    t = hold(tr, hands(0.8, 0.3, 2), t + DT, 500);
-    expect(tr.anchor(layout, ASPECT, FULL_FRAME).cx).toBe(0.5);
+    // Fast hands are ignored; hands that rest for restMs get the kit.
+    let t = hold(tr, hands(0.8, 0.3, 2), 0, 500);
+    expect(tr.placed).toBe(false);
+    t = hold(tr, hands(0.5, 0.5), t + DT, 200);
+    expect(tr.placed).toBe(false);
+    t = hold(tr, hands(0.5, 0.5), t + DT, 100);
+    expect(tr.anchor(layout, ASPECT, FULL_FRAME)).toEqual({ cx: 0.5, cy: 0.61, unit: 0.11 });
+
+    // Still placing: a new resting pose pulls it over within a second or two, position, height and size.
     t = hold(tr, hands(0.8, 0.6, 0, 0.09), t + DT, 2000);
     const placed = tr.anchor(layout, ASPECT, FULL_FRAME);
     expect(placed.cx).toBeCloseTo(0.8, 2);
@@ -123,18 +122,21 @@ describe('KitAnchorTracker', () => {
     expect(tr.toggle()).toBe(false);
     expect(tr.state).toBe('locked');
     expect(tr.anchor(layout, ASPECT, FULL_FRAME)).toEqual(placed); // no jump, no resize
-    hold(tr, hands(0.5, 0.4, 0, 0.13), t + DT, 5000);
+    t = hold(tr, hands(0.5, 0.4, 0, 0.13), t + DT, 5000);
+    t = hold(tr, [], t + DT, 3000);
+    hold(tr, hands(0.5, 0.4, 0, 0.13), t + DT, 1000);
     expect(tr.anchor(layout, ASPECT, FULL_FRAME)).toEqual(placed); // and it never follows again
 
     tr.reset();
-    expect(tr.state).toBe('auto');
+    expect(tr.state).toBe('locked');
     expect(tr.placed).toBe(false);
+    expect(tr.anchor(layout, ASPECT, FULL_FRAME)).toEqual(DEFAULT);
   });
 
   it('holds still for freezeMs after a hit while it is being placed', () => {
     const tr = new KitAnchorTracker(opts);
-    let t = hold(tr, hands(0.5, 0.5), 0, 400);
     tr.toggle();
+    let t = hold(tr, hands(0.5, 0.5), 0, 400);
     tr.noteHit(t);
     t = hold(tr, hands(0.8, 0.5), t + DT, 250);
     expect(tr.anchor(layout, ASPECT, FULL_FRAME).cx).toBe(0.5);
@@ -142,26 +144,10 @@ describe('KitAnchorTracker', () => {
     expect(tr.anchor(layout, ASPECT, FULL_FRAME).cx).toBeGreaterThan(0.5);
   });
 
-  it('lands again on the next visitor after lostMs without hands, unless the player pinned it', () => {
-    const auto = new KitAnchorTracker(opts);
-    let t = hold(auto, hands(0.4, 0.5), 0, 400);
-    t = hold(auto, [], t + DT, 2500);
-    hold(auto, hands(0.8, 0.5), t + DT, 400);
-    expect(auto.anchor(layout, ASPECT, FULL_FRAME).cx).toBeCloseTo(0.8, 9);
-
-    const pinned = new KitAnchorTracker(opts);
-    t = hold(pinned, hands(0.5, 0.5), 0, 400);
-    pinned.toggle();
-    pinned.toggle();
-    t = hold(pinned, [], t + DT, 2500);
-    hold(pinned, hands(0.8, 0.5), t + DT, 400);
-    expect(pinned.anchor(layout, ASPECT, FULL_FRAME).cx).toBe(0.5);
-  });
-
   it('survives the clock going back (a replay restarting)', () => {
     const tr = new KitAnchorTracker(opts);
-    const t = hold(tr, hands(0.5, 0.5), 5000, 400);
     tr.toggle();
+    const t = hold(tr, hands(0.5, 0.5), 5000, 400);
     tr.noteHit(t);
     hold(tr, hands(0.8, 0.5), 0, 1500);
     expect(tr.anchor(layout, ASPECT, FULL_FRAME).cx).toBeGreaterThan(0.55);

@@ -50,7 +50,7 @@ describe('instrument registry', () => {
     const p0 = createInstrument('drums', { ...d, playerId: 0, region: half(0, 0.5) });
     const p1 = createInstrument('drums', { ...d, playerId: 1, region: half(0.5, 1) });
     expect(p0.overlay).toBeInstanceOf(DrumsFx);
-    expect(p0.view?.()).toMatchObject({ instrument: 'drums', calibration: 'auto' });
+    expect(p0.view?.()).toMatchObject({ instrument: 'drums', calibration: 'locked' }); // the default kit stays put
 
     const ASPECT = 4 / 3;
     const frame: VisionFrame = { t: 0, aspect: ASPECT, hands: [handAt(1, { x: 0.3, y: 0.5 }, 0, 0), handAt(2, { x: 1.0, y: 0.4 }, 0, 0, { playerId: 1 })], inferenceMs: 0 };
@@ -81,7 +81,7 @@ describe('instrument registry', () => {
     expect(d.config.drum.padHalfHeight).toBe(DEFAULT_CONFIG.drum.padHalfHeight);
 
     p0.resetCalibration?.();
-    expect(p0.view?.()).toMatchObject({ calibration: 'auto' });
+    expect((p0.view?.() as { anchor: { cx: number } }).anchor.cx).toBeCloseTo(ASPECT / 4, 9); // back to the middle of their half
     p0.dispose?.();
     p1.dispose?.();
   });

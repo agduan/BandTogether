@@ -85,14 +85,14 @@ export interface Config {
     kit: Record<string, KitPad>;
     /** One hand cannot fire twice within this long, whatever the pad (one big stroke through two stacked lines). */
     trackRefractoryMs: number;
-    /** The kit follows the player (`layout` around an anchor). `?drum.bodyRelative=false` = the fixed `kit`. */
+    /** The kit is `layout` around an anchor the player can place (C, then C again). `?drum.bodyRelative=false` = the fixed `kit`. */
     bodyRelative: boolean;
     /** The body-relative kit, keyed by sample name. X-ranges touch but never overlap. */
     layout: Record<string, KitPadOffset>;
     anchor: {
       /** Palm size (h) the h-unit thresholds above were tuned at; they scale by `unit / defaultUnit`. */
       defaultUnit: number;
-      /** Snare line height (h) before any hand has been seen. */
+      /** Snare line height (h) of the default kit, until the player places it (C, then C again). */
       defaultCy: number;
       /** While the player is placing the kit (C, then C again): time constant of the glide onto their resting hands (ms). */
       tauMs: number;
@@ -101,8 +101,6 @@ export interface Config {
       restMs: number;
       /** The kit holds still this long after a hit (ms). */
       freezeMs: number;
-      /** With no hands for this long a kit nobody pinned forgets its player and lands on the next one (ms). */
-      lostMs: number;
       /** Widest the kit may be, as a fraction of the player's region. */
       maxWidth: number;
       /** Highest a strike line may sit (h from the top). */
@@ -279,7 +277,6 @@ export const DEFAULT_CONFIG: Config = {
       restVMax: 0.35,
       restMs: 250,
       freezeMs: 300,
-      lostMs: 2000,
       maxWidth: 0.92,
       topMargin: 0.08,
       cyMin: 0.35,

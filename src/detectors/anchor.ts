@@ -84,12 +84,12 @@ function poseOf(samples: ReadonlyArray<AnchorSample>): KitPose {
 }
 
 /**
- * Places one drummer's kit. The kit never moves while it is being played:
- * - not placed yet: the first time every hand of the player has been slow for
- *   `restMs`, the kit lands on them and stays there. If nobody pinned it and
- *   the hands are gone for `lostMs`, it lands again on the next visitor.
- * - placing (`toggle()`, the C key): the kit follows the resting hands, quickly
- *   (`tauMs`), in position, height and size, so the player sees what they get.
+ * Places one drummer's kit. The kit starts at a hard-coded default (centre of
+ * the player's region, `defaultCy`, `defaultUnit`) and never moves by itself:
+ * - `toggle()` (the C key) starts placing: the kit follows the resting hands,
+ *   quickly (`tauMs`), in position, height and size, so the player sees what
+ *   they get. Only hands that have been slow for `restMs` move it, and it holds
+ *   for `freezeMs` after a hit, so a stroke never drags it along.
  * - `toggle()` again pins it exactly where it is drawn. Nothing jumps, and
  *   nothing moves it afterwards except another toggle or `reset()`.
  * A moving strike line cannot fire by itself: the crossing core needs the
@@ -98,28 +98,20 @@ function poseOf(samples: ReadonlyArray<AnchorSample>): KitPose {
 export class KitAnchorTracker {
   private pose: KitPose | null = null;
   private following = false;
-  /** The player pinned the kit themselves: it no longer re-lands on a new visitor. */
-  private pinned = false;
   private restSince: number | null = null;
   private lastHit = -Infinity;
-  private lastSeen = -Infinity;
   private lastT: number | null = null;
 
   constructor(private readonly opts: () => AnchorOptions) {}
 
-  /** 'auto': waiting to land on a player, or following them while they place it. 'locked': staying put. */
+  /** 'auto': following the player while they place it. 'locked': staying put (at the default, or where it was pinned). */
   get state(): 'auto' | 'locked' {
-    return this.following || (!this.pose && !this.pinned) ? 'auto' : 'locked';
+    return this.following ? 'auto' : 'locked';
   }
 
-  /** True once the kit has been placed on a player (before that it sits at the default). */
+  /** True once the player has placed the kit (before that it sits at the default). */
   get placed(): boolean {
     return this.pose !== null;
-  }
-
-  /** True while the player is placing the kit (between two presses of C). */
-  get placing(): boolean {
-    return this.following;
   }
 
   update(samples: ReadonlyArray<AnchorSample>, t: number): void {
@@ -128,20 +120,12 @@ export class KitAnchorTracker {
       // The clock went back (a replay restarted): keep the pose, forget the timers.
       this.restSince = null;
       this.lastHit = -Infinity;
-      this.lastSeen = t;
     }
     const dt = this.lastT === null ? 0 : clamp(t - this.lastT, 0, 100);
     this.lastT = t;
 
-    if (samples.length === 0) {
-      this.restSince = null;
-      return;
-    }
-    if (!this.pinned && !this.following && t - this.lastSeen > o.lostMs) this.pose = null; // someone new: land on them
-    this.lastSeen = t;
-    if (!this.following && (this.pose || this.pinned)) return; // placed or pinned (even at the default): it stays put
-
-    if (samples.some((s) => s.speed >= o.restVMax)) {
+    if (!this.following) return; // it stays put
+    if (samples.length === 0 || samples.some((s) => s.speed >= o.restVMax)) {
       this.restSince = null;
       return;
     }
@@ -150,7 +134,7 @@ export class KitAnchorTracker {
 
     const target = poseOf(samples);
     if (!this.pose) {
-      this.pose = target;
+      this.pose = target; // first placement: straight from the default onto the player
       return;
     }
     const a = 1 - Math.exp(-dt / Math.max(1, o.tauMs));
@@ -166,21 +150,19 @@ export class KitAnchorTracker {
   /** Start placing the kit, or pin it where it is. Returns true while placing. */
   toggle(): boolean {
     this.following = !this.following;
-    if (!this.following) this.pinned = true;
     this.restSince = null;
     return this.following;
   }
 
-  /** Forget the player: back to the default, landing on the next resting pose. */
+  /** Forget the placement: back to the default, staying put. */
   reset(): void {
     this.pose = null;
     this.following = false;
-    this.pinned = false;
     this.restSince = null;
     this.lastHit = -Infinity;
   }
 
-  /** The anchor for this screen and region; the default pose (centre of the region) until a player has been seen. */
+  /** The anchor for this screen and region; the default pose (centre of the region) until the player places it. */
   anchor(layout: KitLayout, aspect: number, region: PlayerRegion): KitAnchor {
     const o = this.opts();
     const pose = this.pose ?? {

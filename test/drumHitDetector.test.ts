@@ -176,6 +176,17 @@ describe('DrumHitDetector, body-relative kit', () => {
       expect(p.x1).toBeLessThanOrEqual(region.x1 * aspect + 1e-9);
     }
   };
+  /** Replay `frames` the way a player uses the kit: C, rest for `placeMs`, C again, then play. */
+  const placeThenPlay = (det: DrumHitDetector, frames: VisionFrame[], placeMs = 400, each?: (f: VisionFrame) => void) => {
+    const t0 = frames[0].t;
+    det.calibrate();
+    return frames.flatMap((f) => {
+      if (det.calibration === 'auto' && f.t - t0 >= placeMs) det.calibrate();
+      const out = det.update(f);
+      each?.(f);
+      return out;
+    });
+  };
   /** Two hands hovering 0.1 either side of `cx` for 400 ms, then the left one plunges (onto the snare). */
   const drummer = (playerId: number, cx: number, trackId = 1): VisionFrame[] => {
     const ys = [...Array<number>(13).fill(0.3), 0.35, 0.4, 0.45, 0.5];
@@ -184,12 +195,21 @@ describe('DrumHitDetector, body-relative kit', () => {
     return l.map((f, i) => ({ ...f, hands: [...f.hands, ...r[i].hands] }));
   };
 
-  it('drums_body_5hits: the kit lands on the resting hands, then five snare hits on the annotations', () => {
+  it('drums_body_5hits: untouched, the default kit ignores hands that are not over it', () => {
+    const det = new DrumHitDetector(bodyConfig());
+    expect(det.calibration).toBe('locked');
+    const [first, ...rest] = loadFixture('drums_body_5hits').frames;
+    det.update(first);
+    const before = det.anchor;
+    expect(rest.flatMap((f) => det.update(f))).toHaveLength(0); // hand #1 is over the default tom1, under its line
+    expect(det.anchor).toEqual(before); // and the kit did not go looking for them
+  });
+
+  it('drums_body_5hits: C, rest, C puts the kit on the hands, then five snare hits on the annotations', () => {
     const rec = loadFixture('drums_body_5hits');
     const det = new DrumHitDetector(bodyConfig());
-    expect(det.calibration).toBe('auto');
-    const hits = rec.frames.flatMap((f) => det.update(f));
-    expect(det.calibration).toBe('locked'); // landed once, then stays
+    const hits = placeThenPlay(det, rec.frames, 800);
+    expect(det.calibration).toBe('locked');
     expect(hits.map((h) => h.pad)).toEqual(['snare', 'snare', 'snare', 'snare', 'snare']);
     const expected = rec.annotations!.filter((a) => a.label === 'hit').map((a) => a.t);
     hits.forEach((h, i) => expect(Math.abs(h.t - expected[i])).toBeLessThanOrEqual(DT + 0.01));
@@ -206,7 +226,8 @@ describe('DrumHitDetector, body-relative kit', () => {
   it('drums_body_upstrokes: sinking slowly through the line and whipping up produces no hits', () => {
     const rec = loadFixture('drums_body_upstrokes');
     const det = new DrumHitDetector(bodyConfig());
-    expect(rec.frames.flatMap((f) => det.update(f))).toHaveLength(0);
+    expect(placeThenPlay(det, rec.frames, 800)).toHaveLength(0);
+    expect(det.anchor!.cx).toBeCloseTo(0.85, 2);
   });
 
   it('the old fixed-kit fixtures stay silent where they should', () => {
@@ -217,11 +238,7 @@ describe('DrumHitDetector, body-relative kit', () => {
   it('keeps the whole kit inside a half-frame region, and still plays there', () => {
     const right = new DrumHitDetector(bodyConfig(), 0, () => RIGHT_HALF);
     inside(right, RIGHT_HALF); // before anyone is seen
-    const hits = drummer(0, 1.0).flatMap((f) => {
-      const out = right.update(f);
-      inside(right, RIGHT_HALF);
-      return out;
-    });
+    const hits = placeThenPlay(right, drummer(0, 1.0), 350, () => inside(right, RIGHT_HALF));
     expect(hits.map((h) => h.pad)).toEqual(['snare']);
     expect(right.anchor!.cx).toBeCloseTo(1.0, 3);
     expect(right.anchor!.unit * 8).toBeCloseTo(0.92 * 0.5 * ASPECT, 9); // a 0.88 h kit does not fit a 0.67 h half
@@ -229,16 +246,14 @@ describe('DrumHitDetector, body-relative kit', () => {
 
     // A player hugging the split, and one standing in the wrong half: the kit stops at the line.
     const edge = new DrumHitDetector(bodyConfig(), 0, () => RIGHT_HALF);
-    for (const f of drummer(0, 0.72)) edge.update(f);
+    placeThenPlay(edge, drummer(0, 0.72), 350);
     inside(edge, RIGHT_HALF);
     expect(Math.min(...edge.geometry.map((p) => p.x0))).toBeCloseTo(ASPECT / 2, 9);
 
     const rec = loadFixture('drums_body_5hits'); // hands around x 0.85
     const left = new DrumHitDetector(bodyConfig(), 0, () => LEFT_HALF);
-    for (const f of rec.frames) {
-      left.update(f);
-      inside(left, LEFT_HALF, f.aspect);
-    }
+    placeThenPlay(left, rec.frames, 800, (f) => inside(left, LEFT_HALF, f.aspect));
+    expect(left.anchor!.cx).toBeLessThan(ASPECT / 2);
   });
 
   it('two drummers keep two kits: each follows, draws and detects their own player', () => {
@@ -247,8 +262,8 @@ describe('DrumHitDetector, body-relative kit', () => {
     const b = new DrumHitDetector(c, 1, () => RIGHT_HALF);
     const p1 = drummer(1, 1.0, 3);
     const frames = drummer(0, 0.33, 1).map((f, i) => ({ ...f, hands: [...f.hands, ...p1[i].hands] }));
-    const hitsA = frames.flatMap((f) => a.update(f));
-    const hitsB = frames.flatMap((f) => b.update(f));
+    const hitsA = placeThenPlay(a, frames, 350);
+    const hitsB = placeThenPlay(b, frames, 350);
     expect(a.anchor!.cx).toBeLessThan(ASPECT / 2);
     expect(b.anchor!.cx).toBeGreaterThan(ASPECT / 2);
     expect(hitsA.map((h) => [h.playerId, h.pad])).toEqual([[0, 'snare']]);
@@ -261,20 +276,17 @@ describe('DrumHitDetector, body-relative kit', () => {
 
   it('calibrate is a toggle: follow the hands, then pin; reset() keeps it, resetCalibration() forgets it', () => {
     const det = new DrumHitDetector(bodyConfig());
-    for (const f of drummer(0, 0.6).slice(0, 13)) det.update(f); // lands on the first rest
-    expect(det.calibration).toBe('locked');
-    const landed = det.anchor!;
-    expect(landed.cx).toBeCloseTo(0.6, 3);
-
-    // Resting somewhere else does nothing until C is pressed...
     const still = (cx: number, t0: number, n: number) => {
       const ys = Array<number>(n).fill(0.35);
       const l = sequence(1, cx - 0.1 - 0.0128, ys, t0);
       const r = sequence(2, cx + 0.1 - 0.0128, ys, t0);
       return l.map((f, i) => ({ ...f, hands: [...f.hands, ...r[i].hands] }));
     };
+    // Resting anywhere does nothing until C is pressed...
+    const initial = det.anchor!;
+    expect(initial.cx).toBeCloseTo(ASPECT / 2, 9);
     for (const f of still(0.8, 2000, 40)) det.update(f);
-    expect(det.anchor).toEqual(landed);
+    expect(det.anchor).toEqual(initial);
 
     // ...then the kit comes over, and the second press pins it without a jump.
     expect(det.calibrate()).toBe(true);
@@ -296,8 +308,8 @@ describe('DrumHitDetector, body-relative kit', () => {
     det.reset(); // standby and back: the placement stays
     expect(det.anchor).toEqual(placed);
     det.resetCalibration();
-    expect(det.calibration).toBe('auto');
-    expect(det.anchor!.cx).toBeCloseTo(ASPECT / 2, 9);
+    expect(det.calibration).toBe('locked');
+    expect(det.anchor).toEqual(initial);
 
     expect(new DrumHitDetector(config()).calibrate()).toBe(false); // fixed kit
   });

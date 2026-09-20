@@ -82,8 +82,8 @@ const TRACK_TTL_MS = 1000;
  * so the debug panel's sliders take effect live.
  *
  * The kit is body-relative by default: a `KitAnchorTracker` places
- * `drum.layout` on the drummer once (it does not wander while they play;
- * `calibrate()` toggles placing it by hand), inside their `region`, and every threshold
+ * `drum.layout` at a default spot inside the player's `region`; it never moves
+ * by itself, `calibrate()` toggles placing it on the drummer. Every threshold
  * written in h-units scales with the kit. `drum.bodyRelative = false` is the
  * fixed `drum.kit`. Two drummers are two detectors with their own anchors.
  *
@@ -125,7 +125,7 @@ export class DrumHitDetector implements Detector<DrumHitEvent> {
 
     const hands = frame.hands.filter((h) => h.playerId === this.playerId);
     const tips = hands.map((h) => trackedPoint(h, drum));
-    // The kit settles before the hits are read: it only ever moves while the hands rest, and only until it is placed.
+    // The kit settles before the hits are read: it only moves while it is being placed, and then only while the hands rest.
     this.tracker.update(hands.map((h, i) => sampleOf(h, tips[i])), frame.t);
     this.layOut();
 
@@ -189,7 +189,7 @@ export class DrumHitDetector implements Detector<DrumHitEvent> {
     return true;
   }
 
-  /** Forget the placement: the kit lands on the next resting pose. */
+  /** Forget the placement: back to the default kit. */
   resetCalibration(): void {
     this.tracker.reset();
     this.dropCores();

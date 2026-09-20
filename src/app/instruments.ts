@@ -76,7 +76,7 @@ function drumConfigFor(config: Config, detector: DrumHitDetector): Config {
   return Object.create(config, { drum: { value: drum, enumerable: true } });
 }
 
-/** Body-relative kit: lands on the player once, inside their region, and stays; `calibrate` toggles placing it by hand. */
+/** Body-relative kit: a default spot inside the player's region; `calibrate` toggles placing it on the player. */
 export function createDrums(deps: InstrumentDeps): Instrument {
   const { config, output, playerId = 0, region } = deps;
   const detector = new DrumHitDetector(config, playerId, region);
