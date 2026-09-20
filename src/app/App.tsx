@@ -782,8 +782,8 @@ function Stage({
                           {ready
                             ? player.instrument === 'none'
                               ? 'Ready'
-                              : `${hands} ${hands === 1 ? 'hand' : 'hands'} ready`
-                            : 'Waiting for hands'}
+                              : `${hands} ${hands === 1 ? 'hand' : 'hands'}`
+                            : 'Waiting'}
                           {player.vocals && player.instrument !== 'none' ? ' · vocals' : ''}
                         </small>
                       </div>

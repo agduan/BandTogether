@@ -766,10 +766,10 @@ summary:focus-visible {
   bottom: 14px;
   left: 14px;
   display: grid;
+  width: 230px;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
-  min-width: 172px;
   max-width: calc(50% - 21px);
   padding: 8px 9px;
   border: 1px solid color-mix(in srgb, var(--player-color) 58%, transparent);
