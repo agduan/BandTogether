@@ -686,13 +686,6 @@ summary:focus-visible {
   max-width: none;
 }
 
-.live-harmony p {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: 0.57rem;
-  line-height: 1.35;
-}
-
 .vocals-sidebar__effects {
   display: grid;
   gap: 7px;

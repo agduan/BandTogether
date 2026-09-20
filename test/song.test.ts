@@ -25,6 +25,10 @@ describe('song schema and lookups', () => {
     expect(getSong('viva-la-vida').vocalCue).toEqual({ pitch: 'B3', lyric: 'I used to…', chord: 'Em' });
     expect(getSong('counting-stars').vocalCue).toEqual({ pitch: 'A3', lyric: 'Lately, I’ve been…', chord: 'Em' });
     expect(getSong('stand-by-me').vocalCue).toEqual({ pitch: 'B3', lyric: 'When the night…', chord: 'G' });
+    expect(getSong('rolling-in-the-deep').vocalCue).toEqual({ pitch: 'C4', lyric: 'There’s a fire…', chord: 'Cm' });
+    expect(getSong('someone-like-you').vocalCue).toEqual({ pitch: 'E4', lyric: 'I heard that…', chord: 'A' });
+    expect(getSong('mr-brightside').vocalCue).toEqual({ pitch: 'C4', lyric: 'Coming out of…', chord: 'C' });
+    expect(getSong('i-will-survive').vocalCue).toEqual({ pitch: 'C5', lyric: 'At first I…', chord: 'Am' });
   });
 
   it('flattens sections in order and loops the chord lookup', () => {

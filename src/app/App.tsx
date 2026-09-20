@@ -450,7 +450,11 @@ function Stage({
     setSongId(id);
     config.play.song = id;
     const s = sessionRef.current;
-    if (s?.songRunning) s.startSong(id);
+    if (!s?.songRunning) return;
+    // Entering live harmony needs a permission-granting Play click if the mic is still off.
+    if (id === SING_FREELY_ID && !s.singer.enabled) s.stopSong();
+    else s.startSong(id);
+    setSongRunning(s.songRunning);
   };
 
   const toggleBacking = () => {
@@ -654,7 +658,7 @@ function Stage({
                 disabled={!live}
                 title="Start or stop the song clock"
               >
-                {songRunning ? '■ Stop' : isSingFreely ? '▶ Start listening' : '▶ Play'}
+                {songRunning ? '■ Stop' : isSingFreely ? '▶ Start' : '▶ Play'}
               </button>
               <button
                 className={`btn ${paused ? 'btn--paused' : ''}`}
@@ -750,7 +754,6 @@ function Stage({
                     ))}
                   </select>
                 </label>
-                <p>Use headphones if the speakers leak into the microphone.</p>
               </div>
             )}
             {vocalCue && (

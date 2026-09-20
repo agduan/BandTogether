@@ -47,6 +47,7 @@ const ROLLING_IN_THE_DEEP: Song = parseSong({
   bpm: 105,
   key: 'Cm',
   timeSig: [4, 4],
+  vocalCue: { pitch: 'C4', lyric: 'There’s a fire…', chord: 'Cm' },
   sections: [
     { name: 'verse', bars: [{ chord: 'Cm' }, { chord: 'Bb' }, { chord: 'Ab' }, { chord: 'Ab' }] },
     { name: 'chorus', bars: [{ chord: 'Cm' }, { chord: 'Bb' }, { chord: 'Ab' }, { chord: 'Ab' }] },
@@ -59,6 +60,7 @@ const SOMEONE_LIKE_YOU: Song = parseSong({
   bpm: 67,
   key: 'A',
   timeSig: [4, 4],
+  vocalCue: { pitch: 'E4', lyric: 'I heard that…', chord: 'A' },
   sections: [
     { name: 'verse', bars: [{ chord: 'A' }, { chord: 'E' }, { chord: 'F#m' }, { chord: 'D' }] },
     { name: 'chorus', bars: [{ chord: 'A' }, { chord: 'E' }, { chord: 'F#m' }, { chord: 'D' }] },
@@ -71,6 +73,7 @@ const MR_BRIGHTSIDE: Song = parseSong({
   bpm: 148,
   key: 'C',
   timeSig: [4, 4],
+  vocalCue: { pitch: 'C4', lyric: 'Coming out of…', chord: 'C' },
   sections: [
     { name: 'verse', bars: [{ chord: 'C' }, { chord: 'F' }, { chord: 'Am' }, { chord: 'G' }] },
     { name: 'chorus', bars: [{ chord: 'C' }, { chord: 'F' }, { chord: 'Am' }, { chord: 'G' }] },
@@ -87,6 +90,7 @@ const I_WILL_SURVIVE: Song = parseSong({
   bpm: 117,
   key: 'Am',
   timeSig: [4, 4],
+  vocalCue: { pitch: 'C5', lyric: 'At first I…', chord: 'Am' },
   sections: [
     {
       name: 'loop',

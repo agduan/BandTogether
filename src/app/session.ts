@@ -438,7 +438,7 @@ export class Session {
     void this.audio.addVoice(this.autoGuitar);
   }
 
-  /** A restrained pop strum; the selected harmony itself only changes on bar 1. */
+  /** A restrained pop strum; the selected harmony itself only changes at bar boundaries. */
   private playAutoGuitar(step: ClockStep, time: number): void {
     if (step.countIn) return;
     const down = step.sub === 0 && (step.beat === 0 || step.beat === 2);
