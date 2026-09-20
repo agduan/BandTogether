@@ -4,7 +4,7 @@
  * art never has to import a detector or recompute where a pad or band is.
  * All geometry is display space, h-units (see core/types.ts).
  */
-import type { ChordName, PadId, TrackId, Vec2 } from './types';
+import type { ChordName, PadId, TrackId } from './types';
 
 /** One drum pad: x-range and strike line. */
 export interface PadGeometry {
@@ -36,7 +36,7 @@ export interface DrumsView {
   calibration: CalibrationState;
 }
 
-/** The horizontal band a strum or pluck crosses: x-range, centreline, half height. */
+/** The horizontal band a strum crosses: x-range, centreline, half height. */
 export interface BandGeometry {
   x0: number;
   x1: number;
@@ -53,19 +53,9 @@ export interface GuitarView {
   fretTrackId: TrackId | null;
 }
 
-/** The bass neck the fret hand slides along, split into `bins` equal pitch bins from `nut`. */
-export interface NeckGeometry {
-  nut: Vec2;
-  body: Vec2;
-  bins: number;
-}
-
 export interface BassView {
   instrument: 'bass';
   band: BandGeometry;
-  neck: NeckGeometry;
-  /** Hard mode: bin under the fret hand; null = none. */
-  activeBin: number | null;
   /** Last note played, e.g. 'G2'. */
   note: string | null;
   /** The root a stroke plays now, without its octave ('G', 'F#'): the chart chord's, or in free play the one that last sounded. */

@@ -176,10 +176,6 @@ export interface Config {
     bandHalfHeight: number;
     bandXMin: number;
     bandXMax: number;
-    /** Unused since the bass became strum only (K9b removes them): the neck ran from the band's left edge to (neckX, neckY), in `bins` pitch bins. */
-    neckX: number;
-    neckY: number;
-    bins: number;
     /** dB, read live. */
     volume: number;
     /** Whole octaves up or down from the resolved note (E2..D#3, which laptop speakers carry); -1 = a real bass register for a PA. Read live. */
@@ -209,16 +205,6 @@ export interface Config {
     drumsVolume: number;
     /** Velocity (0..1) of the easy-mode auto kick, which plays through the drummer's own kit at full level. */
     autoKickVelocity: number;
-  };
-  score: {
-    /** Grid lines per beat that count as on-beat (2 = eighths). */
-    subdivision: number;
-    perfectMs: number;
-    goodMs: number;
-    /** Events in the tightness window. */
-    window: number;
-    /** Subtracted from every event's time before judging; raise it if honest playing reads late. */
-    latencyMs: number;
   };
   players: {
     /** 1 or 2. With two, player 0 owns the screen-left half of the mirrored picture and player 1 the right. */
@@ -330,9 +316,6 @@ export const DEFAULT_CONFIG: Config = {
     bandHalfHeight: 0.05,
     bandXMin: 0.53,
     bandXMax: 0.81,
-    neckX: 0.12,
-    neckY: 0.42,
-    bins: 6,
     volume: -3,
     octave: 0,
   },
@@ -347,7 +330,6 @@ export const DEFAULT_CONFIG: Config = {
     drumsVolume: -2,
     autoKickVelocity: 0.5,
   },
-  score: { subdivision: 2, perfectMs: 60, goodMs: 130, window: 16, latencyMs: 0 },
   players: { count: 1, deadZone: 0.05 },
   guitar: { volume: -8, spreadMinMs: 4, spreadMaxMs: 20, humanizeMs: 1.5 },
 };

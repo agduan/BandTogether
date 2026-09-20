@@ -3,7 +3,6 @@ import type { Voice } from '@/core/types';
 import { velocityToGain } from '../latencyMeter';
 
 export const DRUM_PADS = ['kick', 'snare', 'hihat', 'tom1', 'tom2', 'tom3', 'crash'] as const;
-export type DrumPad = (typeof DRUM_PADS)[number];
 
 /**
  * Drum kit one-shots. Each hit spawns its own buffer source through its own

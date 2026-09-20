@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CONFIG } from '@/app/config';
 import { BASS_LOWEST, PAD_LOWEST, partPlayedBy, planStep, type BackingNote } from '@/audio/backing';
 import { positionWithCountIn, stepAt } from '@/audio/groove';
-import { FREEPLAY_CONTEXT } from '@/audio/modes';
-import { judgeNow } from '@/audio/score';
 import { chordTones, midiToNote } from '@/song/chords';
 
 describe('count-in grid', () => {
@@ -34,12 +31,6 @@ describe('count-in grid', () => {
     expect(stepAt(8, 4, 4)).toEqual({ bar: 0, beat: 0, sub: 0, countIn: false });
     expect(stepAt(8 + 8 + 3, 4, 4)).toEqual({ bar: 1, beat: 1, sub: 1, countIn: false });
     expect(stepAt(6, 3, 3)).toEqual({ bar: 0, beat: 0, sub: 0, countIn: false });
-  });
-
-  it('nothing is judged during the count-in', () => {
-    const ctx = { ...FREEPLAY_CONTEXT, bpm: 120, beatPhase: 0 };
-    expect(judgeNow(ctx, DEFAULT_CONFIG.score)?.judgement).toBe('perfect');
-    expect(judgeNow({ ...ctx, countIn: true }, DEFAULT_CONFIG.score)).toBeNull();
   });
 });
 

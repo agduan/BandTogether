@@ -1,5 +1,5 @@
 import { bus } from '@/core/bus';
-import type { BassPluckEvent, OverlayLayer, PlayerId, Vec2, VisionFrame } from '@/core/types';
+import type { BassStrumEvent, OverlayLayer, PlayerId, Vec2, VisionFrame } from '@/core/types';
 import type { BassView, InstrumentView } from '@/core/views';
 
 const STRUM_GLOW_MS = 440;
@@ -21,14 +21,14 @@ const HALF_WAVES = 3;
  * each bassist gets their own, wherever they placed it.
  */
 export class BassOverlay implements OverlayLayer {
-  private last: BassPluckEvent | null = null;
+  private last: BassStrumEvent | null = null;
   private readonly unsubscribe: () => void;
 
   constructor(
     private readonly playerId: PlayerId,
     private readonly view: () => InstrumentView | null,
   ) {
-    this.unsubscribe = bus.on('bass.pluck', (e) => {
+    this.unsubscribe = bus.on('bass.strum', (e) => {
       if (e.playerId === this.playerId) this.last = e;
     });
   }

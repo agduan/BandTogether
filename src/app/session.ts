@@ -13,10 +13,9 @@ import { Recorder, Replayer, type Recording, type ReplayerOptions } from '@/visi
 import { BackingBand, partPlayedBy, type BackingPart } from '@/audio/backing';
 import { AudioEngine } from '@/audio/engine';
 import { createResolver, FREEPLAY_CONTEXT } from '@/audio/modes';
-import { BandScore, isScoredEvent } from '@/audio/score';
 import { SingerChannel, type MicrophoneInfo } from '@/audio/singer';
 import { SongClock } from '@/audio/songClock';
-import type { InstrumentEvent, InstrumentId, PlayerId, PlayMode, SongContext, Voice } from '@/core/types';
+import type { InstrumentId, PlayerId, PlayMode, SongContext, Voice } from '@/core/types';
 import { Hud } from '@/render/hud';
 import { getSong } from '@/song/songs';
 import { barAt, barCount } from '@/song/types';
@@ -66,8 +65,6 @@ export class Session {
   /** Players the UI has not named since the last `setNumPlayers` (see there). */
   private unconfirmed: Set<PlayerId> | null = null;
   private songClock: SongClock | null = null;
-  private readonly score: BandScore;
-  private readonly unsubscribeScore: () => void;
   readonly stats: SessionStats = {
     fps: 0,
     inferenceMs: 0,
@@ -103,10 +100,6 @@ export class Session {
     this.audio = new AudioEngine(config.audio);
     this.singer = new SingerChannel(config.singer, () => this.audio.output);
     this.backing = new BackingBand(() => config.backing, () => this.audio.output);
-    this.score = new BandScore(config.score, () => this.songContext());
-    this.unsubscribeScore = bus.onAny((e) => {
-      if ('playerId' in e) this.judge(e);
-    });
     this.hud = new Hud(() => this.info());
   }
 
@@ -179,7 +172,6 @@ export class Session {
       this.audio.removeVoice(old.instrument.voice);
     }
     this.slots[playerId] = next;
-    this.score.resetPlayer(playerId); // a new instrument starts from zero
   }
 
   /**
@@ -306,18 +298,6 @@ export class Session {
     bus.emit({ type: 'drum.hit', t: performance.now(), playerId: drummer.playerId, pad: 'kick', velocity });
   }
 
-  /** Score a sounding event against the song clock. Free play and a paused band are not judged. */
-  private judge(e: InstrumentEvent): void {
-    if (this.isPaused || this.isStandby) return;
-    const instrument = this.slots[e.playerId]?.instrument.id;
-    if (instrument && isScoredEvent(e, instrument)) this.score.hit(e.playerId);
-  }
-
-  /** Zero every player's score and the tightness meter. `startSong` does this too; `setInstrument` zeroes that player. */
-  resetScore(): void {
-    this.score.reset();
-  }
-
   /**
    * What the easy-mode auto kick plays through: a human drummer's own kit, else
    * the band's, but only once the band's groove has been switched off — with the
@@ -341,7 +321,6 @@ export class Session {
         hands: hands.filter((h) => h.playerId === id).length,
         volume: this.playerVolumes[id],
         calibration: this.calibrationOf(id),
-        score: this.score.info(id),
       };
     });
     return {
@@ -356,7 +335,6 @@ export class Session {
       backing: { enabled: this.config.backing.enabled, parts: { ...this.config.backing.parts } },
       singer: this.singer.info(),
       players,
-      band: { tightness: this.score.tightness },
     };
   }
 
@@ -410,7 +388,6 @@ export class Session {
   startSong(songId = this.config.play.song): void {
     if (this.audio.state !== 'running') return;
     this.stopSong();
-    this.score.reset();
     this.config.play.song = songId;
     const { play } = this.config;
     this.songClock = new SongClock(getSong(songId), {
@@ -493,7 +470,7 @@ export class Session {
    * Hold the band while the players are edited. Unlike `pause()`, the camera,
    * the hand tracking and `info().players[i].hands` stay live (the setup cards
    * show who is in position), but no instrument detects or sounds, ringing
-   * notes are cut, the song holds its beat and nothing is scored.
+   * notes are cut, and the song holds its beat.
    */
   setStandby(on: boolean): void {
     if (on === this.isStandby) return;
@@ -641,7 +618,6 @@ export class Session {
     this.singer.dispose();
     this.teardown();
     for (const c of this.players) c.dispose();
-    this.unsubscribeScore();
     this.hud.dispose();
     this.onPhase('idle');
   }

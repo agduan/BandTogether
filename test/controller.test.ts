@@ -94,7 +94,7 @@ describe('InstrumentController', () => {
     controller.dispose();
   });
 
-  it('routes bass plucks through resolveBass and stays silent when the resolver has no note', () => {
+  it('routes bass strums through resolveBass and stays silent when the resolver has no note', () => {
     const voice = fakeVoice();
     const stamps: InstrumentEvent[] = [];
     const resolver = new HardMode();
@@ -105,13 +105,13 @@ describe('InstrumentController', () => {
       resolver,
       audio: { stamp: (e) => stamps.push(e) },
     });
-    const pluck = { type: 'bass.pluck', playerId: 0, direction: 'down', velocity: 0.8, pitchBin: null } as const;
-    bus.emit({ ...pluck, t: 1 });
+    const strum = { type: 'bass.strum', playerId: 0, direction: 'down', velocity: 0.8 } as const;
+    bus.emit({ ...strum, t: 1 });
     expect(voice.triggers).toHaveLength(0);
     expect(stamps).toHaveLength(0);
 
     resolver.resolveBass = (e) => ({ notes: ['G1'], velocities: [e.velocity] });
-    bus.emit({ ...pluck, t: 2 });
+    bus.emit({ ...strum, t: 2 });
     bus.emit({ type: 'drum.hit', t: 3, playerId: 0, pad: 'kick', velocity: 0.9 }); // not a bass event
     expect(voice.triggers).toEqual([{ notes: ['G1'], velocities: [0.8] }]);
     expect(stamps.map((s) => s.t)).toEqual([2]);

@@ -7,9 +7,9 @@ import { BASS_LOWEST } from '@/audio/backing';
 import { bassNote, createResolver, EasyMode, FREEPLAY_CONTEXT, HardMode } from '@/audio/modes';
 import { BassVoice, planBassNote } from '@/audio/voices/bassVoice';
 import { bus } from '@/core/bus';
-import type { BassPluckEvent, Instrument, SongContext, Vec2, VisionFrame } from '@/core/types';
+import type { BassStrumEvent, Instrument, SongContext, Vec2, VisionFrame } from '@/core/types';
 import type { BandGeometry } from '@/core/views';
-import { BassPluckDetector } from '@/detectors/bassDetector';
+import { BassStrumDetector } from '@/detectors/bassDetector';
 import { BassOverlay } from '@/detectors/bassOverlay';
 import { midiToNote, noteToMidi } from '@/song/chords';
 import { SONGS } from '@/song/songs';
@@ -17,8 +17,8 @@ import { flattenBars } from '@/song/types';
 import { loadFixture } from './helpers/fixtures';
 import { ASPECT, handAt, palmSequence } from './helpers/hands';
 
-const pluck = (direction: 'down' | 'up', over: Partial<BassPluckEvent> = {}): BassPluckEvent => ({
-  type: 'bass.pluck', t: 1000, playerId: 0, direction, velocity: 0.8, pitchBin: null, ...over,
+const stroke = (direction: 'down' | 'up', over: Partial<BassStrumEvent> = {}): BassStrumEvent => ({
+  type: 'bass.strum', t: 1000, playerId: 0, direction, velocity: 0.8, ...over,
 });
 const onChart = (chord: string): SongContext => ({ ...FREEPLAY_CONTEXT, bpm: 120, chord });
 const deps = (over: Partial<InstrumentDeps> = {}): InstrumentDeps => ({ config: structuredClone(DEFAULT_CONFIG), output: () => ({}) as ToneAudioNode, ...over });
@@ -28,28 +28,28 @@ const bandOf = (bass: Instrument): BandGeometry => (bass.view?.() as { band: Ban
 describe('bass note resolution', () => {
   it('a stroke plays the root of the chart chord, in the register the backing bass uses, down and up alike', () => {
     for (const mode of [new EasyMode(), new HardMode()]) {
-      expect(mode.resolveBass(pluck('down'), onChart('G'))).toEqual({ notes: ['G2'], velocities: [0.8], direction: 'down', chord: 'G' });
-      expect(mode.resolveBass(pluck('up', { velocity: 0.5 }), onChart('G'))).toMatchObject({ notes: ['G2'], velocities: [0.5] });
-      expect(mode.resolveBass(pluck('down'), onChart('Em')).notes).toEqual(['E2']);
-      expect(mode.resolveBass(pluck('down'), onChart('C')).notes).toEqual(['C3']);
-      expect(mode.resolveBass(pluck('down'), onChart('D')).notes).toEqual(['D3']);
+      expect(mode.resolveBass(stroke('down'), onChart('G'))).toEqual({ notes: ['G2'], velocities: [0.8], direction: 'down', chord: 'G' });
+      expect(mode.resolveBass(stroke('up', { velocity: 0.5 }), onChart('G'))).toMatchObject({ notes: ['G2'], velocities: [0.5] });
+      expect(mode.resolveBass(stroke('down'), onChart('Em')).notes).toEqual(['E2']);
+      expect(mode.resolveBass(stroke('down'), onChart('C')).notes).toEqual(['C3']);
+      expect(mode.resolveBass(stroke('down'), onChart('D')).notes).toEqual(['D3']);
     }
   });
 
   it('every chord in every built-in chart gives a note inside E2..D#3; a name nobody can parse is silent', () => {
     for (const song of Object.values(SONGS)) {
       for (const bar of flattenBars(song)) {
-        const midi = noteToMidi(bassNote(pluck('down'), bar.chord).notes[0] as string);
+        const midi = noteToMidi(bassNote(stroke('down'), bar.chord).notes[0] as string);
         expect(midi, `${song.title}: ${bar.chord}`).toBeGreaterThanOrEqual(BASS_LOWEST);
         expect(midi).toBeLessThan(BASS_LOWEST + 12);
       }
     }
-    expect(bassNote(pluck('down'), 'N.C.').notes).toEqual([]);
+    expect(bassNote(stroke('down'), 'N.C.').notes).toEqual([]);
   });
 
   it('free play walks the G D Em C loop, four strokes a chord, like the guitar', () => {
     const mode = createResolver('easy');
-    const notes = Array.from({ length: 17 }, (_, i) => mode.resolveBass(pluck(i % 2 ? 'up' : 'down', { t: 1000 + i * 300 }), FREEPLAY_CONTEXT).notes[0]);
+    const notes = Array.from({ length: 17 }, (_, i) => mode.resolveBass(stroke(i % 2 ? 'up' : 'down', { t: 1000 + i * 300 }), FREEPLAY_CONTEXT).notes[0]);
     expect(notes).toEqual([...Array(4).fill('G2'), ...Array(4).fill('D3'), ...Array(4).fill('E2'), ...Array(4).fill('C3'), 'G2']);
   });
 });
@@ -84,21 +84,21 @@ describe('bass voice', () => {
 
   it('drops notes until its samples are loaded, and never throws', () => {
     const voice = new BassVoice(() => ({}) as ToneAudioNode, () => DEFAULT_CONFIG.bass);
-    expect(() => voice.trigger(bassNote(pluck('down'), 'G'))).not.toThrow();
+    expect(() => voice.trigger(bassNote(stroke('down'), 'G'))).not.toThrow();
     expect(voice.note).toBeNull();
     expect(() => voice.releaseAll()).not.toThrow();
     expect(() => voice.dispose()).not.toThrow();
   });
 });
 
-describe('BassPluckDetector', () => {
-  it('strum_alternating: the same strokes as the guitar, one event each, no pitch bin', () => {
+describe('BassStrumDetector', () => {
+  it('strum_alternating: the same strokes as the guitar, one event each', () => {
     const rec = loadFixture('strum_alternating');
-    const det = new BassPluckDetector(structuredClone(DEFAULT_CONFIG));
-    const plucks = rec.frames.flatMap((f) => det.update(f));
-    expect(plucks).toHaveLength(26);
-    plucks.forEach((p, i) => i > 0 && expect(p.direction).not.toBe(plucks[i - 1].direction));
-    for (const p of plucks) expect(p).toMatchObject({ type: 'bass.pluck', playerId: 0, pitchBin: null });
+    const det = new BassStrumDetector(structuredClone(DEFAULT_CONFIG));
+    const strokes = rec.frames.flatMap((f) => det.update(f));
+    expect(strokes).toHaveLength(26);
+    strokes.forEach((p, i) => i > 0 && expect(p.direction).not.toBe(strokes[i - 1].direction));
+    for (const p of strokes) expect(p).toMatchObject({ type: 'bass.strum', playerId: 0 });
     expect(det.roles).toEqual({ strumTrackId: 1, fretTrackId: 2 });
 
     det.reset();
@@ -106,13 +106,13 @@ describe('BassPluckDetector', () => {
   });
 
   it('the drum fixtures never play the bass', () => {
-    const det = new BassPluckDetector(structuredClone(DEFAULT_CONFIG));
+    const det = new BassStrumDetector(structuredClone(DEFAULT_CONFIG));
     expect(loadFixture('drums_upstrokes').frames.flatMap((f) => det.update(f))).toHaveLength(0);
   });
 
   it('reads handedness from the `strum` keys, live', () => {
     const config = structuredClone(DEFAULT_CONFIG);
-    const det = new BassPluckDetector(config);
+    const det = new BassStrumDetector(config);
     const right = det.band;
     config.strum.lefty = true;
     expect(det.band.x0 / ASPECT).toBeCloseTo(1 - right.x1 / ASPECT);
@@ -124,13 +124,13 @@ describe('bass instrument end to end', () => {
   it('fixture frames through the controller reach the bus as bass events; the view has no active bin', () => {
     const bass = createInstrument('bass', deps());
     const controller = new InstrumentController({ playerId: 0, instrument: bass, resolver: createResolver('easy'), audio: { stamp: () => {} } });
-    const heard: BassPluckEvent[] = [];
-    const off = bus.on('bass.pluck', (e) => heard.push(e));
+    const heard: BassStrumEvent[] = [];
+    const off = bus.on('bass.strum', (e) => heard.push(e));
     for (const f of loadFixture('strum_alternating').frames) controller.onFrame(f);
     off();
     controller.dispose();
     expect(heard).toHaveLength(26);
-    expect(bass.view?.()).toMatchObject({ instrument: 'bass', activeBin: null, note: null });
+    expect(bass.view?.()).toMatchObject({ instrument: 'bass', note: null });
   });
 
   it('calibrate centres the band on the strumming hand and reset puts it back', () => {
@@ -214,11 +214,11 @@ describe('bass overlay', () => {
   it('a stroke of this player makes the string swing and glow, harder strokes swing further, and it dies away', () => {
     const bass = createInstrument('bass', deps({ playerId: 1 }));
     const overlay = bass.overlay as BassOverlay;
-    bus.emit(pluck('down', { t: 1000, playerId: 0 })); // somebody else's
+    bus.emit(stroke('down', { t: 1000, playerId: 0 })); // somebody else's
     expect(overlay.glowAt(1010)).toBe(0);
 
     const swingAfter = (velocity: number) => {
-      bus.emit(pluck('down', { t: 1000, playerId: 1, velocity }));
+      bus.emit(stroke('down', { t: 1000, playerId: 1, velocity }));
       const { ctx, texts, string } = fakeCtx();
       overlay.draw(ctx, at(1010), toPx);
       expect(texts).not.toContain('STRUM HERE'); // the arrow takes its place while the stroke shows
@@ -240,7 +240,7 @@ describe('bass overlay', () => {
 
     // Swapped out: it stops listening.
     bass.dispose?.();
-    bus.emit(pluck('up', { t: 3000, playerId: 1 }));
+    bus.emit(stroke('up', { t: 3000, playerId: 1 }));
     expect(overlay.glowAt(3010)).toBe(0);
   });
 

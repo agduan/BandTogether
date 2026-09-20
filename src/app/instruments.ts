@@ -5,7 +5,7 @@ import type { InstrumentView } from '@/core/views';
 import { DrumsVoice } from '@/audio/voices/drumsVoice';
 import { BassVoice } from '@/audio/voices/bassVoice';
 import { GuitarVoice } from '@/audio/voices/guitarVoice';
-import { BassPluckDetector } from '@/detectors/bassDetector';
+import { BassStrumDetector } from '@/detectors/bassDetector';
 import { BassOverlay } from '@/detectors/bassOverlay';
 import { DebugOverlay } from '@/detectors/debugOverlay';
 import { DrumHitDetector, kitZones } from '@/detectors/drumHitDetector';
@@ -19,7 +19,8 @@ export type PlayableInstrumentId = (typeof INSTRUMENT_IDS)[number];
 /**
  * Modes each instrument supports. Guitar is easy only (no chord classifier);
  * if the toggle is left on hard it still plays the chart chord. So does the
- * bass; its `hard` entry goes with the K9b cleanup.
+ * bass, and its `hard` entry stays so a drummer next to a bassist can still
+ * pick hard mode (the UI offers hard only when every instrument lists it).
  */
 export const INSTRUMENT_MODES: Record<PlayableInstrumentId, readonly PlayMode[]> = {
   drums: ['easy', 'hard'],
@@ -206,14 +207,11 @@ function rootName(chord: ChordName | null): string | null {
 export function createBass(deps: InstrumentDeps): Instrument {
   const { config, output, playerId = 0, song, region = () => FULL_FRAME } = deps;
   const slot: BandSlot = { placed: null };
-  const detector = new BassPluckDetector(bandConfigFor(config, 'bass', slot), playerId, region);
+  const detector = new BassStrumDetector(bandConfigFor(config, 'bass', slot), playerId, region);
   const voice = new BassVoice(output, () => config.bass);
   const view = (): InstrumentView => ({
     instrument: 'bass',
     band: detector.band,
-    neck: detector.neck,
-    // No fret-hand bins: the chart picks the note.
-    activeBin: null,
     note: voice.note,
     root: rootName(song?.().chord ?? voice.chord),
   });

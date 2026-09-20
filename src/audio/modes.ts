@@ -1,4 +1,4 @@
-import type { BassPluckEvent, ChordName, DrumHitEvent, NoteResolver, PlayMode, SongContext, StringSound, StrumEvent } from '@/core/types';
+import type { BassStrumEvent, ChordName, DrumHitEvent, NoteResolver, PlayMode, SongContext, StringSound, StrumEvent } from '@/core/types';
 import { chordTones, FREEPLAY_LOOP, midiToNote, STRING_COUNT, voicingFor } from '@/song/chords';
 import { BASS_LOWEST } from './backing';
 import { grooveRole } from './groove';
@@ -69,14 +69,14 @@ function chartStrum(e: StrumEvent, song: SongContext, freeplay: FreeplayChords):
  * One bass note: the root of `chord`, in the register the backing band's bass
  * plays (it is the part the player takes over). Down and up sound alike.
  */
-export function bassNote(e: BassPluckEvent, chord: ChordName): StringSound {
+export function bassNote(e: BassStrumEvent, chord: ChordName): StringSound {
   const tones = chordTones(chord, BASS_LOWEST);
   if (!tones) return SILENT;
   return { notes: [midiToNote(tones.root)], velocities: [e.velocity], direction: e.direction, chord };
 }
 
 /** Bass is strum only, like the guitar: both modes play the chart root, or walk the free-play loop when no song runs. */
-function chartBass(e: BassPluckEvent, song: SongContext, freeplay: FreeplayChords): StringSound {
+function chartBass(e: BassStrumEvent, song: SongContext, freeplay: FreeplayChords): StringSound {
   return bassNote(e, song.chord ?? freeplay.next(e.t));
 }
 
@@ -96,7 +96,7 @@ export class HardMode implements NoteResolver {
     return chartStrum(e, song, this.freeplay);
   }
 
-  resolveBass(e: BassPluckEvent, song: SongContext): StringSound {
+  resolveBass(e: BassStrumEvent, song: SongContext): StringSound {
     return chartBass(e, song, this.freeplay);
   }
 }
@@ -122,7 +122,7 @@ export class EasyMode implements NoteResolver {
     return chartStrum(e, song, this.freeplay);
   }
 
-  resolveBass(e: BassPluckEvent, song: SongContext): StringSound {
+  resolveBass(e: BassStrumEvent, song: SongContext): StringSound {
     return chartBass(e, song, this.freeplay);
   }
 }

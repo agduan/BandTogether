@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe('Session seams', () => {
-  it('a new session has no instrument: nothing to play, draw or score, and the full band may back it', () => {
+  it('a new session has no instrument: nothing to play or draw, and the full band may back it', () => {
     const s = makeSession(null);
     expect(s.controllers).toHaveLength(0);
     expect(s.info().instrument).toBeNull();
@@ -61,7 +61,7 @@ describe('Session seams', () => {
 
   it('a player setup that names no instrument for a player clears it (the UI says nothing for "None")', async () => {
     const s = makeSession();
-    // Done with drums still picked: the same controller stays, score and calibration with it.
+    // Done with drums still picked: the same controller stays, calibration with it.
     const drums = s.controllers[0];
     s.setNumPlayers(1);
     s.setInstrument('drums', 0);
@@ -90,7 +90,6 @@ describe('Session seams', () => {
     expect(info.instrument).toBe('drums');
     expect(info.players).toHaveLength(1);
     expect(info.players[0]).toMatchObject({ id: 0, instrument: 'drums', hands: 0, calibration: 'locked' }); // the default kit stays put until C
-    expect(info.players[0].score.points).toBe(0);
     // HudInfo fields stay at the top level.
     expect(info).toMatchObject({ mode: 'easy', songTitle: null, songRunning: false, beatsPerBar: 4, paused: false });
     expect(info.song).toMatchObject({ id: 'viva-la-vida', bpm: 138, barCount: 8, running: false, lyric: null });
@@ -126,7 +125,7 @@ describe('Session seams', () => {
 
     s.setInstrument('bass');
     expect(s.info().players[0].instrument).toBe('bass');
-    expect(s.controllers[0].instrument.view?.()).toMatchObject({ instrument: 'bass', activeBin: null });
+    expect(s.controllers[0].instrument.view?.()).toMatchObject({ instrument: 'bass', note: null });
 
     expect(() => s.setInstrument('kazoo' as never)).toThrow(); // an id that does not exist
     expect(s.info().instrument).toBe('bass'); // a failed swap leaves the old instrument in place
@@ -172,7 +171,7 @@ describe('Session seams', () => {
     s.stop();
   });
 
-  it('standby holds the band: no sound, no kick, no score, and instruments picked meanwhile stay quiet until it ends', () => {
+  it('standby holds the band: no sound, no kick, and instruments picked meanwhile stay quiet until it ends', () => {
     const s = makeSession();
     let triggers = 0;
     s.controllers[0].instrument.voice.trigger = () => void triggers++;
@@ -220,47 +219,6 @@ describe('Session seams', () => {
     s.stop();
   });
 
-  it('scores sounding events against the song clock and reports them through info()', () => {
-    const s = makeSession();
-    const hit = () => bus.emit({ type: 'drum.hit', t: 1, playerId: 0, pad: 'snare', velocity: 0.8 });
-    hit(); // free play: not judged
-    expect(s.info().players[0].score).toMatchObject({ points: 0, miss: 0, last: null });
-
-    // Stand in for a running song clock (the real one needs an audio context).
-    let song: SongContext = { ...FREEPLAY_CONTEXT, bpm: 80, beatPhase: 0.02 };
-    (s as unknown as { songContext: () => SongContext }).songContext = () => song;
-    hit();
-    s.kick();
-    expect(s.info().players[0].score).toMatchObject({ perfect: 2, combo: 2, last: 'perfect' });
-    expect(s.info().band.tightness).toBe(1);
-
-    song = { ...song, beatPhase: 0.25 };
-    hit();
-    expect(s.info().players[0].score).toMatchObject({ perfect: 2, miss: 1, combo: 0, bestCombo: 2 });
-    expect(s.info().band.tightness).toBeCloseTo(2 / 3);
-
-    // Events for an instrument the player is not on make no sound and no score.
-    bus.emit({ type: 'guitar.strum', t: 1, playerId: 0, direction: 'down', velocity: 0.8, chord: null });
-    expect(s.info().players[0].score.miss).toBe(1);
-
-    s.resetScore();
-    expect(s.info().players[0].score.points).toBe(0);
-    expect(s.info().band.tightness).toBe(0);
-
-    // A new instrument starts from zero; picking the same one again changes nothing.
-    hit();
-    s.setInstrument('drums');
-    expect(s.info().players[0].score.perfect).toBe(0);
-    expect(s.info().players[0].score.miss).toBe(1);
-    s.setInstrument('guitar');
-    expect(s.info().players[0].score).toMatchObject({ points: 0, miss: 0, last: null });
-    expect(s.info().band.tightness).toBe(0);
-    s.setInstrument('drums');
-    s.stop();
-    hit(); // a stopped session no longer listens
-    expect(s.info().players[0].score.miss).toBe(0);
-  });
-
   it('reports the chart position, the chord and the next bar\'s chord', () => {
     const s = makeSession();
     expect(s.info().song).toMatchObject({ chord: null, nextChord: null, running: false });
@@ -277,8 +235,6 @@ describe('Session seams', () => {
     // During the count-in the chart sits at its top and the position moves to `countIn`.
     countIn = true;
     expect(s.info().song).toMatchObject({ bar: 0, beat: 0, beatPhase: 0, chord: 'G', nextChord: 'Em', countIn: { active: true, beat: 2, beats: 4 } });
-    bus.emit({ type: 'drum.hit', t: 1, playerId: 0, pad: 'snare', velocity: 0.8 });
-    expect(s.info().players[0].score).toMatchObject({ perfect: 0, good: 0, miss: 0 }); // not scored
     countIn = false;
     bar = 3;
     expect(s.info().song).toMatchObject({ chord: 'D', nextChord: 'G' });
@@ -290,7 +246,7 @@ describe('Session seams', () => {
     expect(s.info().song.nextChord).toBeNull();
   });
 
-  it('pause freezes the score and resume keeps it', () => {
+  it('pause and resume flip the paused flag, and info() reports it', () => {
     const video = { pause() {}, play: async () => {} } as unknown as HTMLVideoElement;
     const canvas = { getContext: () => ({}) } as unknown as HTMLCanvasElement;
     const s = new Session(video, canvas, structuredClone(DEFAULT_CONFIG));
@@ -298,20 +254,13 @@ describe('Session seams', () => {
     s.overlay.drawLabel = () => {};
     // Stand in for a started session: pause() is a no-op without a frame loop.
     (s as unknown as { loop: { start(): void; stop(): void } }).loop = { start() {}, stop() {} };
-    const song: SongContext = { ...FREEPLAY_CONTEXT, bpm: 80, beatPhase: 0.02 };
-    (s as unknown as { songContext: () => SongContext }).songContext = () => song;
-    const hit = () => bus.emit({ type: 'drum.hit', t: 1, playerId: 0, pad: 'snare', velocity: 0.8 });
 
-    hit();
-    hit();
     s.pause();
     expect(s.paused).toBe(true);
-    hit(); // keyboard hits still travel the bus while paused, but are not judged
-    expect(s.info().players[0].score).toMatchObject({ perfect: 2, combo: 2, points: 200 });
+    expect(s.info().paused).toBe(true);
     s.resume();
-    expect(s.info().players[0].score).toMatchObject({ perfect: 2, combo: 2, points: 200 });
-    hit();
-    expect(s.info().players[0].score.perfect).toBe(3);
+    expect(s.paused).toBe(false);
+    expect(s.info().paused).toBe(false);
     s.stop();
   });
 
@@ -387,14 +336,13 @@ describe('two players', () => {
     return s;
   };
 
-  it('each player has a slot: own instrument, own half, own hands, own voice, own score', () => {
+  it('each player has a slot: own instrument, own half, own hands, own voice', () => {
     const s = twoPlayers('drums', 'drums');
     expect(s.config.players.count).toBe(2);
     expect(s.controllers.map((c) => c.playerId)).toEqual([0, 1]);
     feed(s, hands(0));
     const info = s.info();
     expect(info.players.map((p) => [p.id, p.instrument, p.hands])).toEqual([[0, 'drums', 1], [1, 'drums', 2]]);
-    expect(info.players[1].score).toMatchObject({ points: 0, combo: 0 });
     expect(info.instrument).toBe('drums');
 
     // Two drummers, two kits, each inside its own half (player 0 = screen-left).

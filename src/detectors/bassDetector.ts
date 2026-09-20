@@ -1,6 +1,6 @@
 import type { Config } from '@/app/config';
-import type { BassPluckEvent, Detector, PlayerId, TrackId, Vec2, VisionFrame } from '@/core/types';
-import type { BandGeometry, NeckGeometry } from '@/core/views';
+import type { BassStrumEvent, Detector, PlayerId, TrackId, Vec2, VisionFrame } from '@/core/types';
+import type { BandGeometry } from '@/core/views';
 import { drawBand } from './debugOverlay';
 import type { RoleAssignment } from './roles';
 import { FULL_FRAME, StrumDetector, type PlayerRegion, type StrokeOptions } from './strumDetector';
@@ -10,18 +10,16 @@ export type BassConfig = Pick<Config, 'bass' | 'strum' | 'filter'>;
 /**
  * Bass: the shared stroke detector over `config.bass`. The guitar family has
  * one gesture, the strum, so every stroke across the bass band is one note;
- * there is no pluck gesture and no fret-hand tracking. The event keeps the
- * wire name `bass.pluck` (with `pitchBin: null`) until the K9b rename.
+ * there is no pluck gesture and no fret-hand tracking.
  */
-export class BassPluckDetector implements Detector<BassPluckEvent> {
-  readonly id = 'bass.pluck';
+export class BassStrumDetector implements Detector<BassStrumEvent> {
+  readonly id = 'bass.strum';
   private readonly strokes: StrumDetector;
-  private aspect = 4 / 3;
 
   constructor(
     private readonly config: BassConfig,
     readonly playerId: PlayerId = 0,
-    private readonly region: () => PlayerRegion = () => FULL_FRAME,
+    region: () => PlayerRegion = () => FULL_FRAME,
   ) {
     const { filter } = config;
     // Handedness and the role rules belong to the player, not the instrument: one set of keys, in `strum`.
@@ -39,23 +37,13 @@ export class BassPluckDetector implements Detector<BassPluckEvent> {
     return this.strokes.roles;
   }
 
-  /** Unused since the bass became strum only; kept for `BassView` until K9b. */
-  get neck(): NeckGeometry {
-    const { bass } = this.config;
-    const { x0, y } = this.band;
-    const { x0: left, x1: right } = this.region();
-    return { body: { x: x0, y }, nut: { x: (left + bass.neckX * (right - left)) * this.aspect, y: bass.neckY }, bins: bass.bins };
-  }
-
-  update(frame: VisionFrame): BassPluckEvent[] {
-    this.aspect = frame.aspect;
+  update(frame: VisionFrame): BassStrumEvent[] {
     return this.strokes.update(frame).map((s) => ({
-      type: 'bass.pluck',
+      type: 'bass.strum',
       t: s.t,
       playerId: this.playerId,
       direction: s.direction,
       velocity: s.velocity,
-      pitchBin: null,
     }));
   }
 

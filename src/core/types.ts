@@ -124,19 +124,17 @@ export interface StrumEvent {
   u?: number;
 }
 
-/** One plucked bass note. The bass is a one-string guitar: same stroke, one pitch. */
-export interface BassPluckEvent {
-  type: 'bass.pluck';
+/** One bass note. The bass is a one-string guitar: same stroke, one pitch. */
+export interface BassStrumEvent {
+  type: 'bass.strum';
   t: number;
   playerId: PlayerId;
   direction: StrumDirection;
   /** 0..1 */
   velocity: number;
-  /** Hard mode: neck bin under the fret hand (0 = nut). null = no fret hand / easy mode. */
-  pitchBin: number | null;
 }
 
-export type InstrumentEvent = DrumHitEvent | StrumEvent | BassPluckEvent;
+export type InstrumentEvent = DrumHitEvent | StrumEvent | BassStrumEvent;
 
 /** Non-instrument events that also travel on the bus. */
 export interface VisionFrameEvent {
@@ -202,11 +200,11 @@ export interface SongContext {
   beatPhase: number;
   chord: ChordName | null;
   key: string;
-  /** true during the count-in before bar 0: `beat` counts inside it, `chord` is the chart's first, nothing is scored. */
+  /** true during the count-in before bar 0: `beat` counts inside it, `chord` is the chart's first. */
   countIn?: boolean;
 }
 
-/** A resolved strum or pluck: one slot per string, low to high. */
+/** A resolved strum: one slot per string, low to high. */
 export interface StringSound {
   /** `null` = that string is not struck by this stroke (it keeps ringing unless the chord changed). */
   notes: (string | null)[];
@@ -222,7 +220,7 @@ export interface StringSound {
 export interface NoteResolver {
   resolveStrum(e: StrumEvent, song: SongContext): StringSound;
   resolveDrum(e: DrumHitEvent, song: SongContext): { sample: string; velocity: number };
-  resolveBass(e: BassPluckEvent, song: SongContext): StringSound;
+  resolveBass(e: BassStrumEvent, song: SongContext): StringSound;
 }
 
 export type InstrumentId = 'guitar' | 'drums' | 'bass';

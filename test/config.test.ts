@@ -35,12 +35,11 @@ describe('config URL overrides', () => {
     expect(DEFAULT_CONFIG.drum.vMin).toBe(1.0);
   });
 
-  it('the instrument-lane sections (bass, singer, backing, score, players) take URL overrides', () => {
-    const config = loadConfig('?bass.bins=4&singer.echo=0.5&backing.enabled=false&score.perfectMs=45&players.count=2');
-    expect(config.bass.bins).toBe(4);
+  it('the instrument-lane sections (bass, singer, backing, players) take URL overrides', () => {
+    const config = loadConfig('?bass.octave=-1&singer.echo=0.5&backing.enabled=false&players.count=2');
+    expect(config.bass.octave).toBe(-1);
     expect(config.singer.echo).toBe(0.5);
     expect(config.backing.enabled).toBe(false);
-    expect(config.score.perfectMs).toBe(45);
     expect(config.players.count).toBe(2);
   });
 

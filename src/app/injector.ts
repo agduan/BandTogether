@@ -26,12 +26,12 @@ export const INJECTOR_KEYS: ReadonlyArray<{ key: string; describe: string; make:
   {
     key: 'n',
     describe: 'bass down',
-    make: (t) => ({ type: 'bass.pluck', t, playerId: 0, direction: 'down', velocity: 0.8, pitchBin: null }),
+    make: (t) => ({ type: 'bass.strum', t, playerId: 0, direction: 'down', velocity: 0.8 }),
   },
   {
     key: 'm',
     describe: 'bass up',
-    make: (t) => ({ type: 'bass.pluck', t, playerId: 0, direction: 'up', velocity: 0.6, pitchBin: null }),
+    make: (t) => ({ type: 'bass.strum', t, playerId: 0, direction: 'up', velocity: 0.6 }),
   },
 ];
 

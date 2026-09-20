@@ -23,10 +23,6 @@ export interface SessionInfo {
   backing: { enabled: boolean; parts: { bass: boolean; pad: boolean; drums: boolean } };
   singer: SingerInfo;
   players: PlayerInfo[];
-  band: {
-    /** Timing quality across all players' recent events, 0..1: perfect = 1, good = 0.5, miss = 0, averaged. */
-    tightness: number;
-  };
 }
 
 export interface SongInfo {
@@ -50,7 +46,7 @@ export interface SongInfo {
   /**
    * The clicks before bar 0. While `active`, `beat` is the 0-based beat inside
    * the count-in (show `beats - beat`), `bar` / `beat` / `beatPhase` above stay
-   * 0, `chord` is the chart's first chord and nothing is scored. Always an
+   * 0, `chord` is the chart's first chord. Always an
    * object; `active` is false once the chart runs and whenever no song runs.
    */
   countIn: CountInInfo;
@@ -77,22 +73,6 @@ export interface SingerInfo {
   error: string | null;
 }
 
-export type Judgement = 'perfect' | 'good' | 'miss';
-
-export interface ScoreInfo {
-  points: number;
-  combo: number;
-  bestCombo: number;
-  perfect: number;
-  good: number;
-  miss: number;
-  last: Judgement | null;
-  /** Signed offset of the last event from the nearest grid line, ms (negative = early). */
-  lastOffsetMs: number | null;
-  /** Timing quality over this player's recent events, 0..1: perfect = 1, good = 0.5, miss = 0, averaged. */
-  tightness: number;
-}
-
 export interface PlayerInfo {
   id: PlayerId;
   /** null = "None": this player holds no instrument. */
@@ -102,17 +82,4 @@ export interface PlayerInfo {
   /** Linear instrument output level, 0..1. */
   volume: number;
   calibration: CalibrationState;
-  score: ScoreInfo;
 }
-
-export const EMPTY_SCORE: ScoreInfo = {
-  points: 0,
-  combo: 0,
-  bestCombo: 0,
-  perfect: 0,
-  good: 0,
-  miss: 0,
-  last: null,
-  lastOffsetMs: null,
-  tightness: 0,
-};
