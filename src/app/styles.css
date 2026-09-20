@@ -488,10 +488,57 @@ summary:focus-visible {
   text-transform: uppercase;
 }
 
-.backing-toggle--compact {
-  display: inline-grid;
-  min-height: 26px;
-  padding: 3px 7px;
+.sidebar-toggles {
+  display: grid;
+  gap: 6px;
+}
+
+.sidebar-toggles .backing-toggle {
+  width: 100%;
+}
+
+.vocals-sidebar__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vocals-sidebar__expand {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 0.59rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.vocals-sidebar__expand:hover {
+  color: var(--text);
+}
+
+.mic-button--sidebar {
+  width: 100%;
+  min-height: 30px;
+  font-size: 0.69rem;
+}
+
+.vocals-sidebar__status {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 0.62rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+.vocals-sidebar__status[data-state='live'] {
+  color: var(--easy);
+}
+
+.vocals-sidebar__status[data-state='error'] {
+  color: var(--hard);
 }
 
 /* Status + readout in the footer */
@@ -1567,11 +1614,6 @@ summary:focus-visible {
   border-radius: inherit;
   background: linear-gradient(90deg, var(--easy), #f0b84b, var(--accent));
   transition: width 80ms linear;
-}
-
-.singer-panel__mic > small {
-  color: var(--text-faint);
-  font-size: 0.57rem;
 }
 
 .mic-input-picker {

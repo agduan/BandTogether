@@ -661,7 +661,7 @@ export class Session {
         this.overlay.drawHand(hand.smooth, { color });
         // Corrected + voted label. Raise only your right hand: it must read "R".
         // If it reads "L", set vision.swapHandedness=true (URL: ?vision.swapHandedness=true).
-        const label = `#${hand.trackId} ${hand.handedness === 'Left' ? 'L' : 'R'} ${hand.handednessScore.toFixed(2)}`;
+        const label = `${hand.handedness === 'Left' ? 'L' : 'R'} ${hand.handednessScore.toFixed(2)}`;
         this.overlay.drawLabel(label, hand.smooth[LM.WRIST], color);
       }
     }

@@ -195,7 +195,7 @@ export function App() {
             Band Together<span aria-hidden="true">.</span>
           </h1>
         </div>
-        <p className="app__tagline">Move like you mean it. We’ll handle the instruments.</p>
+        <p className="app__tagline">Move like you mean it!</p>
       </header>
 
       <Stage config={config} active={started} onStart={() => setStarted(true)} />
@@ -236,6 +236,7 @@ function Stage({
   const [drumsEnabled, setDrumsEnabled] = useState(config.backing.parts.drums);
   const [sessionInfo, setSessionInfo] = useState<KaraokeSessionInfo | null>(null);
   const [micPending, setMicPending] = useState(false);
+  const [vocalsExpanded, setVocalsExpanded] = useState(false);
   const [microphones, setMicrophones] = useState<MicrophoneInfo[]>([]);
   const [micDeviceId, setMicDeviceId] = useState(config.singer.deviceId);
   const [echo, setEcho] = useState(config.singer.echo);
@@ -536,7 +537,6 @@ function Stage({
           </div>
 
           <div className="control-section">
-            <span className="control-label">Play style</span>
             <div className="segmented" data-mode={mode} role="group" aria-label="Difficulty">
               <button
                 type="button"
@@ -557,13 +557,6 @@ function Stage({
                 Hard
               </button>
             </div>
-            <span className="control-note">
-              {assignedPlayers.some((player) => player.instrument === 'guitar')
-                ? 'The song chooses the chord. You bring the rhythm.'
-                : mode === 'easy'
-                  ? 'The song keeps every move musical.'
-                  : 'Your position chooses the sound.'}
-            </span>
           </div>
 
           <div className="control-section">
@@ -612,8 +605,89 @@ function Stage({
               </button>
             </div>
             <span className="control-note">
-              Press <kbd>C</kbd> with your hands in playing position.
+              Press <kbd>C</kbd> in playing position.
             </span>
+          </div>
+
+          <div className="control-section">
+            <span className="control-label">Backing mix</span>
+            <div className="sidebar-toggles">
+              <button
+                type="button"
+                className="backing-toggle"
+                aria-pressed={backingEnabled}
+                disabled={!live}
+                onClick={toggleBacking}
+                title="Let the generated band fill the parts nobody is playing."
+              >
+                <span aria-hidden="true">{backingEnabled ? '●' : '○'}</span>
+                Backing
+                <strong>{backingEnabled ? 'On' : 'Off'}</strong>
+              </button>
+              <button
+                type="button"
+                className="backing-toggle"
+                aria-pressed={bassEnabled}
+                disabled={!live || !backingEnabled}
+                onClick={toggleBass}
+                title="The generated bass under the band. Off leaves the drums and the pad."
+              >
+                <span aria-hidden="true">{bassEnabled ? '●' : '○'}</span>
+                Bass
+                <strong>{bassEnabled ? 'On' : 'Off'}</strong>
+              </button>
+              <button
+                type="button"
+                className="backing-toggle"
+                aria-pressed={drumsEnabled}
+                disabled={!live || !backingEnabled}
+                onClick={toggleDrums}
+                title="The generated groove. Off leaves the easy-mode kick on 1 and 3 to hold the beat."
+              >
+                <span aria-hidden="true">{drumsEnabled ? '●' : '○'}</span>
+                Drums
+                <strong>{drumsEnabled ? 'On' : 'Off'}</strong>
+              </button>
+            </div>
+          </div>
+
+          <div className="control-section vocals-sidebar">
+            <div className="vocals-sidebar__head">
+              <span className="control-label">Vocals</span>
+              <button
+                type="button"
+                className="vocals-sidebar__expand"
+                aria-expanded={vocalsExpanded}
+                aria-controls="vocals-panel"
+                onClick={() => setVocalsExpanded((expanded) => !expanded)}
+              >
+                {vocalsExpanded ? 'Hide' : 'Expand'}
+              </button>
+            </div>
+            <button
+              type="button"
+              className="mic-button mic-button--sidebar"
+              data-enabled={singerInfo?.enabled ? '' : undefined}
+              disabled={!live || singerId < 0 || micPending || singerInfo?.available === false}
+              onClick={() => void toggleSinger()}
+            >
+              <span className="mic-button__dot" aria-hidden="true" />
+              {micPending
+                ? 'Requesting microphone…'
+                : singerInfo?.available === false
+                  ? 'Microphone unavailable'
+                  : singerInfo?.enabled
+                    ? 'Turn microphone off'
+                    : 'Enable microphone'}
+            </button>
+            <div className="vocals-sidebar__status" data-state={singerInfo?.error ? 'error' : singerInfo?.enabled ? 'live' : 'idle'}>
+              {singerInfo?.error ??
+                (singerId < 0
+                  ? 'Assign vocals in Edit players'
+                  : singerInfo?.enabled
+                    ? `Player ${singerId + 1} mic live`
+                    : `Player ${singerId + 1} mic off`)}
+            </div>
           </div>
         </div>
 
@@ -764,42 +838,6 @@ function Stage({
               </span>
             ))}
             <span className="instrument-chip">{mode}</span>
-            <button
-              type="button"
-              className="backing-toggle backing-toggle--compact"
-              aria-pressed={backingEnabled}
-              disabled={!live}
-              onClick={toggleBacking}
-              title="Let the generated band fill the parts nobody is playing."
-            >
-              <span aria-hidden="true">{backingEnabled ? '●' : '○'}</span>
-              Backing
-              <strong>{backingEnabled ? 'On' : 'Off'}</strong>
-            </button>
-            <button
-              type="button"
-              className="backing-toggle backing-toggle--compact"
-              aria-pressed={bassEnabled}
-              disabled={!live || !backingEnabled}
-              onClick={toggleBass}
-              title="The generated bass under the band. Off leaves the drums and the pad."
-            >
-              <span aria-hidden="true">{bassEnabled ? '●' : '○'}</span>
-              Bass
-              <strong>{bassEnabled ? 'On' : 'Off'}</strong>
-            </button>
-            <button
-              type="button"
-              className="backing-toggle backing-toggle--compact"
-              aria-pressed={drumsEnabled}
-              disabled={!live || !backingEnabled}
-              onClick={toggleDrums}
-              title="The generated groove. Off leaves the easy-mode kick on 1 and 3 to hold the beat."
-            >
-              <span aria-hidden="true">{drumsEnabled ? '●' : '○'}</span>
-              Drums
-              <strong>{drumsEnabled ? 'On' : 'Off'}</strong>
-            </button>
             <span className="hint">
               <kbd>C</kbd> calibrate · <kbd>space</kbd> kick
             </span>
@@ -849,13 +887,13 @@ function Stage({
         </div>
       </div>
 
-      <section className="singer-panel" aria-labelledby="singer-title">
+      {vocalsExpanded && (
+      <section id="vocals-panel" className="singer-panel" aria-labelledby="singer-title">
         <div className="singer-panel__intro">
           <span className="singer-panel__mark" aria-hidden="true">
             V
           </span>
           <div>
-            <span className="control-label">Optional layer</span>
             <h2 id="singer-title">Vocals</h2>
             <p>
               {singerId >= 0 ? `Assigned to Player ${singerId + 1}. ` : 'Assign vocals from Edit Players. '}
@@ -905,7 +943,6 @@ function Stage({
               </select>
             </label>
           )}
-          <small>Permission is requested only when you press Enable.</small>
         </div>
 
         <div className="singer-panel__effects">
@@ -953,6 +990,7 @@ function Stage({
           </span>
         </div>
       </section>
+      )}
 
       {showDebug && session && <DebugPanel session={session} config={config} onClose={() => setShowDebug(false)} />}
     </section>
