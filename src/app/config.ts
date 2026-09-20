@@ -20,6 +20,16 @@ export interface KitPad {
   y: number;
 }
 
+/**
+ * One pad of the body-relative kit: offsets from the kit anchor in palm-size
+ * units, `dy` positive downward. The anchor sits on the snare's strike line.
+ */
+export interface KitPadOffset {
+  dx: number;
+  dy: number;
+  halfWidth: number;
+}
+
 export interface Config {
   camera: {
     width: number;
@@ -68,8 +78,42 @@ export interface Config {
     padTolerance: number;
     /** Drawn half-height of a pad around its strike line (h). Visual only. */
     padHalfHeight: number;
-    /** Kit layout keyed by sample name. Override a leaf with e.g. `?drum.kit.snare.y=0.7`. */
+    /**
+     * The fixed kit, keyed by sample name: x as fractions of the player's region.
+     * Used when `bodyRelative` is off. Override a leaf with e.g. `?drum.kit.snare.y=0.7`.
+     */
     kit: Record<string, KitPad>;
+    /** One hand cannot fire twice within this long, whatever the pad (one big stroke through two stacked lines). */
+    trackRefractoryMs: number;
+    /** The kit follows the player (`layout` around an anchor). `?drum.bodyRelative=false` = the fixed `kit`. */
+    bodyRelative: boolean;
+    /** The body-relative kit, keyed by sample name. X-ranges touch but never overlap. */
+    layout: Record<string, KitPadOffset>;
+    anchor: {
+      /** Palm size (h) the h-unit thresholds above were tuned at; they scale by `unit / defaultUnit`. */
+      defaultUnit: number;
+      /** Snare line height (h) before any hand has been seen. */
+      defaultCy: number;
+      /** While the player is placing the kit (C, then C again): time constant of the glide onto their resting hands (ms). */
+      tauMs: number;
+      /** Hands slower than this (h/s) for `restMs` count as resting. */
+      restVMax: number;
+      restMs: number;
+      /** The kit holds still this long after a hit (ms). */
+      freezeMs: number;
+      /** With no hands for this long a kit nobody pinned forgets its player and lands on the next one (ms). */
+      lostMs: number;
+      /** Widest the kit may be, as a fraction of the player's region. */
+      maxWidth: number;
+      /** Highest a strike line may sit (h from the top). */
+      topMargin: number;
+      /** Range the snare line is kept in (h). */
+      cyMin: number;
+      cyMax: number;
+      /** Clamp on `unit / defaultUnit` when scaling the thresholds. */
+      scaleMin: number;
+      scaleMax: number;
+    };
   };
   strum: {
     hyst: number;
@@ -218,6 +262,30 @@ export const DEFAULT_CONFIG: Config = {
       tom2: { x0: 0.73, x1: 0.87, y: 0.55 },
       crash: { x0: 0.79, x1: 0.96, y: 0.4 },
       kick: { x0: 0.48, x1: 0.65, y: 0.85 },
+    },
+    trackRefractoryMs: 120,
+    bodyRelative: true,
+    // Symmetric around the anchor so it packs into half a frame; the kick is the spacebar and the auto kick.
+    layout: {
+      hihat: { dx: -3, dy: -0.9, halfWidth: 1 },
+      snare: { dx: -1, dy: 0, halfWidth: 1 },
+      tom1: { dx: 1, dy: -2, halfWidth: 1 },
+      crash: { dx: 3, dy: -2.6, halfWidth: 1 },
+    },
+    anchor: {
+      defaultUnit: 0.11,
+      defaultCy: 0.68,
+      tauMs: 350,
+      restVMax: 0.35,
+      restMs: 250,
+      freezeMs: 300,
+      lostMs: 2000,
+      maxWidth: 0.92,
+      topMargin: 0.08,
+      cyMin: 0.35,
+      cyMax: 0.92,
+      scaleMin: 0.5,
+      scaleMax: 1.5,
     },
   },
   strum: {

@@ -4,6 +4,9 @@
 //
 //   drums_5hits.json      right hand (#1) plunges through the snare line five times
 //   drums_upstrokes.json  right hand (#1) whips UP five times and drifts back down slowly
+//   drums_body_5hits.json     body-relative kit: both hands hover right of centre, the kit lands on
+//                             them, then hand #1 plunges through the snare line five times
+//   drums_body_upstrokes.json same pose: hand #1 sinks slowly through the snare line and whips back up
 //   strum_alternating.json right hand (#1) strums down/up across the guitar band: 8 full
 //                          stroke pairs, then 5 small sloppy ones; left hand (#2) frets up the neck
 //
@@ -108,6 +111,28 @@ function drumHands(stroke) {
   ];
 }
 
+// Body-relative kit (K1): both sticks hover at tip y 0.549, tips at x 0.7328 and 0.9672, so the
+// kit anchors at cx 0.85 with its snare line one palm (0.11) lower, at 0.659, and the snare
+// spanning 0.63-0.85: hand #1 is over the snare, hand #2 over tom1. Hand #1 is outside the
+// fixed kit's snare (0.41-0.68), so a hit can only come from a kit that followed the player.
+const BODY_HOVER = 0.3;
+function bodyDrumHands(wristY) {
+  return (t) => [
+    { trackId: 1, handedness: 'Left', wrist: { x: 0.72, y: wristY(t) }, mirror: 1 },
+    { trackId: 2, handedness: 'Right', wrist: { x: 0.98, y: BODY_HOVER }, mirror: -1 },
+  ];
+}
+
+// The opposite of a hit: sink through the line over `slow` frames, whip back up in `fast`.
+function sinkY(t, { from, to, slow, fast }) {
+  for (const h of HIT_TIMES) {
+    const d = t - h;
+    if (d >= 0 && d < slow * DT) return from + ((to - from) * (d + DT)) / (slow * DT);
+    if (d >= slow * DT && d < (slow + fast) * DT) return to - ((to - from) * (d - slow * DT + DT)) / (fast * DT);
+  }
+  return from;
+}
+
 const FIXTURES = {
   // 4-frame plunge ≈ 2.25 h/s (above vMin 1.0); 10-frame return.
   drums_5hits: {
@@ -120,6 +145,18 @@ const FIXTURES = {
   drums_upstrokes: {
     note: 'Synthetic: right hand (#1) starts below the snare line, whips up five times and drifts back slowly. Must produce zero hits.',
     hands: drumHands({ from: 0.5, to: 0.2, fast: 4, slow: 20 }),
+    annotations: HIT_TIMES.map((t) => ({ t, label: 'upstroke', detail: 'no hit expected' })),
+  },
+  // 4-frame plunge = 1.5 h/s; the tip goes 0.599, 0.649, 0.699: across 0.659 on the 3rd plunge frame.
+  drums_body_5hits: {
+    note: 'Synthetic, body-relative kit: both hands hover right of centre for a second (the kit lands on them), then hand #1 plunges through the snare line five times.',
+    hands: bodyDrumHands((t) => strokeY(t, { from: BODY_HOVER, to: 0.5, fast: 4, slow: 10 })),
+    annotations: HIT_TIMES.map((t) => ({ t: t + 2 * DT, label: 'hit', detail: 'snare' })),
+  },
+  // 14-frame sink = 0.43 h/s (under vMin), then a 4-frame whip up. Must produce zero hits.
+  drums_body_upstrokes: {
+    note: 'Synthetic, body-relative kit: hand #1 sinks slowly through the snare line and whips back up, five times. Must produce zero hits.',
+    hands: bodyDrumHands((t) => sinkY(t, { from: BODY_HOVER, to: 0.5, slow: 14, fast: 4 })),
     annotations: HIT_TIMES.map((t) => ({ t, label: 'upstroke', detail: 'no hit expected' })),
   },
   // Annotated at the centreline; the Schmitt trigger fires up to ~2 frames later (hysteresis + frame time).

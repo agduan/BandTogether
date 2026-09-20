@@ -87,7 +87,7 @@ describe('Session seams', () => {
     const info = s.info();
     expect(info.instrument).toBe('drums');
     expect(info.players).toHaveLength(1);
-    expect(info.players[0]).toMatchObject({ id: 0, instrument: 'drums', hands: 0, calibration: 'none' });
+    expect(info.players[0]).toMatchObject({ id: 0, instrument: 'drums', hands: 0, calibration: 'auto' }); // body-relative kit, not yet calibrated
     expect(info.players[0].score.points).toBe(0);
     // HudInfo fields stay at the top level.
     expect(info).toMatchObject({ mode: 'easy', songTitle: null, songRunning: false, beatsPerBar: 4, paused: false });
@@ -139,12 +139,20 @@ describe('Session seams', () => {
     expect(toasts).toHaveLength(1);
     expect(toasts[0]).toMatchObject({ kind: 'warn' });
 
-    // An instrument that can calibrate gets the latest frame.
-    const inst = s.controllers[0].instrument;
-    inst.calibrate = () => true;
+    // The drum kit is placed with two presses: the first starts following the hands, the second pins it.
     s.lastFrame = { t: 1, aspect: 4 / 3, hands: [], inferenceMs: 0 };
     expect(s.calibrate()).toBe(true);
-    expect(seen.filter((e) => e.type === 'ui.toast')[1]).toMatchObject({ text: 'Calibrated', kind: 'success' });
+    expect(s.info().players[0].calibration).toBe('auto');
+    expect(s.calibrate()).toBe(true);
+    const texts = seen.filter((e) => e.type === 'ui.toast').slice(1);
+    expect(texts[0]).toMatchObject({ kind: 'success' });
+    expect(texts[1]).toMatchObject({ text: 'Kit locked', kind: 'success' });
+
+    // Any other instrument that can calibrate gets the latest frame and a plain answer.
+    s.setInstrument('guitar');
+    s.controllers[0].instrument.calibrate = () => true;
+    expect(s.calibrate()).toBe(true);
+    expect(seen.filter((e) => e.type === 'ui.toast')[3]).toMatchObject({ text: 'Calibrated', kind: 'success' });
     s.stop();
   });
 
