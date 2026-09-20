@@ -86,4 +86,25 @@ describe('FrameAdapter', () => {
     expect(frame.hands[0].trackId).toBe(2);
     expect(frame.hands[0].dt).toBe(0);
   });
+  it('two players: a hand gets the player of the screen half it is born in (image x is mirrored) and keeps it', () => {
+    const config = { ...DEFAULT_CONFIG, players: { ...DEFAULT_CONFIG.players, count: 2 } };
+    const adapter = new FrameAdapter(config);
+    // Image x 0.8 is screen-left after the mirror: player 0. Image x 0.2 is screen-right: player 1.
+    const born = adapter.adapt(result([{ x: 0.8, y: 0.5, size: 0.1, label: 'Right' }, { x: 0.2, y: 0.5, size: 0.1, label: 'Left' }]), 0, aspect, 10);
+    expect(born.hands.map((h) => h.playerId)).toEqual([0, 1]);
+    // Player 0's hand drifts over the line in small steps: same track, same player.
+    let frame = born;
+    for (let i = 1; i <= 8; i++) {
+      frame = adapter.adapt(result([{ x: 0.8 - i * 0.05, y: 0.5, size: 0.1, label: 'Right' }, { x: 0.2, y: 0.5, size: 0.1, label: 'Left' }]), i * 33, aspect, 10);
+    }
+    expect(frame.hands[0].raw[LM.WRIST].x).toBeGreaterThan(aspect / 2);
+    expect(frame.hands.map((h) => h.trackId)).toEqual(born.hands.map((h) => h.trackId));
+    expect(frame.hands.map((h) => h.playerId)).toEqual([0, 1]);
+  });
+
+  it('one player: every hand is player 0, wherever it is', () => {
+    const adapter = new FrameAdapter(DEFAULT_CONFIG);
+    const frame = adapter.adapt(result([{ x: 0.8, y: 0.5, size: 0.1, label: 'Right' }, { x: 0.2, y: 0.5, size: 0.1, label: 'Left' }]), 0, aspect, 10);
+    expect(frame.hands.map((h) => h.playerId)).toEqual([0, 0]);
+  });
 });

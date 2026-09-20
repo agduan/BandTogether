@@ -2,7 +2,7 @@ import type { Config } from '@/app/config';
 import type { BassPluckEvent, Detector, Vec2, VisionFrame } from '@/core/types';
 import type { BandGeometry, NeckGeometry } from '@/core/views';
 import { drawBand } from './debugOverlay';
-import { bandGeometry } from './strumDetector';
+import { bandGeometry, FULL_FRAME, type PlayerRegion } from './strumDetector';
 
 /**
  * Bass plucks: the guitar's stroke across its own band, one note at a time.
@@ -17,16 +17,18 @@ export class BassPluckDetector implements Detector<BassPluckEvent> {
   constructor(
     private readonly config: Pick<Config, 'bass' | 'filter'>,
     readonly playerId = 0,
+    private readonly region: () => PlayerRegion = () => FULL_FRAME,
   ) {}
 
   get band(): BandGeometry {
-    return bandGeometry(this.config.bass, this.aspect);
+    return bandGeometry(this.config.bass, this.aspect, this.region());
   }
 
   get neck(): NeckGeometry {
     const { bass } = this.config;
     const { x0, y } = this.band;
-    return { body: { x: x0, y }, nut: { x: bass.neckX * this.aspect, y: bass.neckY }, bins: bass.bins };
+    const { x0: left, x1: right } = this.region();
+    return { body: { x: x0, y }, nut: { x: (left + bass.neckX * (right - left)) * this.aspect, y: bass.neckY }, bins: bass.bins };
   }
 
   update(frame: VisionFrame): BassPluckEvent[] {

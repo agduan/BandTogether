@@ -39,6 +39,7 @@ export interface Config {
     deviceId: string;
   };
   vision: {
+    /** Fewest hands the model tracks. The session raises it to two per player, and no higher: spare capacity costs fps. */
     numHands: number;
     minDetectionConfidence: number;
     minPresenceConfidence: number;
@@ -210,8 +211,12 @@ export interface Config {
     latencyMs: number;
   };
   players: {
+    /** 1 or 2. With two, player 0 owns the screen-left half of the mirrored picture and player 1 the right. */
     count: number;
-    /** Half-width of the no-man's-land between the two screen halves, fraction of the width. */
+    /**
+     * Half-width of the undecided strip around the split, fraction of the width. A hand gets the player of
+     * the half it is born in and keeps it; one born inside the strip is only fixed once it leaves it.
+     */
     deadZone: number;
   };
   guitar: {
