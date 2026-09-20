@@ -142,8 +142,12 @@ export interface Config {
   };
   backing: {
     enabled: boolean;
-    /** dB */
+    /** Level of the whole band, dB. */
     volume: number;
+    /** Each part's level inside the band, dB. */
+    bassVolume: number;
+    padVolume: number;
+    drumsVolume: number;
   };
   score: {
     /** Grid lines per beat that count as on-beat (2 = eighths). */
@@ -243,7 +247,7 @@ export const DEFAULT_CONFIG: Config = {
     bins: 6,
   },
   singer: { enabled: false, gain: 1, echo: 0.25, reverb: 0.3 },
-  backing: { enabled: true, volume: -10 },
+  backing: { enabled: true, volume: -10, bassVolume: -8, padVolume: -16, drumsVolume: -4 },
   score: { subdivision: 2, perfectMs: 60, goodMs: 130, window: 16, latencyMs: 0 },
   players: { count: 1, deadZone: 0.05 },
   guitar: { volume: -8, spreadMinMs: 4, spreadMaxMs: 20, humanizeMs: 1.5 },

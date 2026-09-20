@@ -14,8 +14,8 @@ export interface SessionInfo {
   songRunning: boolean;
   beatsPerBar: number;
 
-  /** Player 0's instrument. */
-  instrument: InstrumentId;
+  /** Player 0's instrument; null = none picked (just the camera picture). */
+  instrument: InstrumentId | null;
   paused: boolean;
   /** The band is held while the players are edited: hands are tracked, nothing plays (see `Session.setStandby`). */
   standby: boolean;
@@ -47,6 +47,20 @@ export interface SongInfo {
   /** Bars in one pass of the chart. */
   barCount: number;
   running: boolean;
+  /**
+   * The clicks before bar 0. While `active`, `beat` is the 0-based beat inside
+   * the count-in (show `beats - beat`), `bar` / `beat` / `beatPhase` above stay
+   * 0, `chord` is the chart's first chord and nothing is scored. Always an
+   * object; `active` is false once the chart runs and whenever no song runs.
+   */
+  countIn: CountInInfo;
+}
+
+export interface CountInInfo {
+  active: boolean;
+  beat: number;
+  /** Length of the count-in, beats (one bar). */
+  beats: number;
 }
 
 export interface SingerInfo {
@@ -79,7 +93,8 @@ export interface ScoreInfo {
 
 export interface PlayerInfo {
   id: PlayerId;
-  instrument: InstrumentId;
+  /** null = "None": this player holds no instrument. */
+  instrument: InstrumentId | null;
   /** Hands tracked for this player in the latest frame. */
   hands: number;
   calibration: CalibrationState;

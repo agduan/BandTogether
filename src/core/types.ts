@@ -178,6 +178,8 @@ export interface BeatEvent {
   bar: number;
   beat: number;
   chord: ChordName | null;
+  /** true for the beats of the count-in: `beat` counts inside it, `bar` is 0 and `chord` is the chart's first. */
+  countIn?: boolean;
 }
 
 /** Stamped by the audio engine when a sound is scheduled, for the latency meter. */
@@ -228,6 +230,8 @@ export interface SongContext {
   beatPhase: number;
   chord: ChordName | null;
   key: string;
+  /** true during the count-in before bar 0: `beat` counts inside it, `chord` is the chart's first, nothing is scored. */
+  countIn?: boolean;
 }
 
 /** A resolved strum or pluck: one slot per string, low to high. */

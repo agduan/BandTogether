@@ -57,10 +57,11 @@ export function judge(
  * Judge "right now" against the song clock. The clock's position is read on
  * the audio timeline at the moment the voice is triggered, so this compares
  * what the player hears with the click they hear; output latency cancels and a
- * paused or restarted song needs no special care. null = no song, no judging.
+ * paused or restarted song needs no special care. null = no song or still in
+ * the count-in, no judging.
  */
 export function judgeNow(song: SongContext, cfg: ScoreConfig): Judged | null {
-  if (!(song.bpm > 0)) return null;
+  if (!(song.bpm > 0) || song.countIn) return null;
   const beatMs = 60000 / song.bpm;
   return judge(song.beatPhase * beatMs - cfg.latencyMs, 0, beatMs, cfg.subdivision, cfg.perfectMs, cfg.goodMs);
 }

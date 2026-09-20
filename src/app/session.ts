@@ -7,6 +7,7 @@ import { LM, type VisionFrame } from '@/core/types';
 import { bus } from '@/core/bus';
 import { Overlay } from '@/render/overlay';
 import { Recorder, Replayer, type Recording, type ReplayerOptions } from '@/vision/recorder';
+import { BackingBand, partPlayedBy, type BackingPart } from '@/audio/backing';
 import { AudioEngine } from '@/audio/engine';
 import { createResolver, FREEPLAY_CONTEXT } from '@/audio/modes';
 import { BandScore, isScoredEvent } from '@/audio/score';
@@ -37,17 +38,21 @@ const HAND_COLORS = ['#ff5c8a', '#5cd6ff', '#ffd75c', '#8aff5c'];
 /**
  * Top-level runtime: camera → hand landmarker → frame adapter → instrument
  * controllers (detectors → bus → mode → voice) → overlay, on the video frame
- * loop. One controller per player; player 0 starts on drums and the UI swaps
- * instruments with `setInstrument`. The UI reads state from `info()`.
+ * loop. One controller per player who holds an instrument. A new session has
+ * none: it is just the camera picture until the UI calls `setInstrument`, and
+ * `setInstrument(null)` goes back to that. The UI reads state from `info()`.
  */
 export class Session {
   readonly camera: Camera;
   readonly overlay: Overlay;
   readonly audio: AudioEngine;
   readonly singer: SingerChannel;
+  readonly backing: BackingBand;
   readonly hud: Hud;
-  /** One per player, index = player id. */
-  private readonly players: InstrumentController[] = [];
+  /** Index = player id; null = that player holds no instrument ("None": they only watch or sing). */
+  private readonly slots: (InstrumentController | null)[] = [null];
+  /** Players the UI has not named since the last `setNumPlayers` (see there). */
+  private unconfirmed: Set<PlayerId> | null = null;
   private songClock: SongClock | null = null;
   private readonly score: BandScore;
   private readonly unsubscribeScore: () => void;
@@ -83,7 +88,7 @@ export class Session {
     this.adapter = new FrameAdapter(config);
     this.audio = new AudioEngine(config.audio);
     this.singer = new SingerChannel(config.singer, () => this.audio.output);
-    this.players.push(this.createController('drums', 0));
+    this.backing = new BackingBand(() => config.backing, () => this.audio.output);
     this.score = new BandScore(config.score, () => this.songContext());
     this.unsubscribeScore = bus.onAny((e) => {
       if ('playerId' in e) this.judge(e);
@@ -93,8 +98,13 @@ export class Session {
 
   // --- players and instruments ---------------------------------------------
 
+  /** The players who hold an instrument, in player order. Use `controller.playerId`, not the index. */
   get controllers(): ReadonlyArray<InstrumentController> {
     return this.players;
+  }
+
+  private get players(): InstrumentController[] {
+    return this.slots.filter((c): c is InstrumentController => c !== null);
   }
 
   private createController(id: InstrumentId, playerId: PlayerId): InstrumentController {
@@ -116,27 +126,51 @@ export class Session {
     return controller;
   }
 
-  /** Swap a player's instrument. Safe while running, paused or mid-song. */
-  setInstrument(id: InstrumentId, playerId: PlayerId = 0): void {
-    const old = this.players[playerId];
-    if (!old || old.instrument.id === id) return;
-    const next = this.createController(id, playerId); // throws on an unknown id before anything is torn down
-    old.dispose();
-    this.audio.removeVoice(old.instrument.voice);
-    this.players[playerId] = next;
+  /**
+   * Give a player an instrument, swap it, or take it away (`null` = "None": no
+   * detectors, no voice, no overlay, just the picture). Safe while running,
+   * paused or mid-song. Players past the first are ignored until row 16.
+   */
+  setInstrument(id: InstrumentId | null, playerId: PlayerId = 0): void {
+    if (playerId >= this.slots.length) return;
+    this.unconfirmed?.delete(playerId);
+    const old = this.slots[playerId];
+    if ((old?.instrument.id ?? null) === id) return;
+    const next = id === null ? null : this.createController(id, playerId); // throws on an unknown id before anything is torn down
+    if (old) {
+      old.dispose();
+      this.audio.removeVoice(old.instrument.voice);
+    }
+    this.slots[playerId] = next;
     this.score.resetPlayer(playerId); // a new instrument starts from zero
     // The auto kick plays through a drummer's voice: follow the swap.
     if (this.songClock) this.songClock.opts.kickVoice = this.drumsVoice();
   }
 
-  /** Stub until row 16 (two players by screen half): records the count, still one player. */
+  /**
+   * Stub until row 16 (two players by screen half): records the count, still one player.
+   *
+   * It also opens a player setup: the UI follows it with one `setInstrument`
+   * per player, in the same tick, but says nothing at all for a player set to
+   * "None". So whoever was not named by the end of the tick loses their
+   * instrument. Once the UI passes `setInstrument(null, id)` itself (ask 13)
+   * every player is named and this sweep never finds anything.
+   */
   setNumPlayers(n: number): void {
     this.config.players.count = Math.min(2, Math.max(1, Math.round(n)));
+    if (this.unconfirmed) return; // a sweep is already queued for this tick
+    this.unconfirmed = new Set(this.slots.map((_, id) => id as PlayerId));
+    queueMicrotask(() => {
+      const unnamed = this.unconfirmed;
+      this.unconfirmed = null;
+      if (this.disposed || !unnamed) return;
+      for (const id of unnamed) this.setInstrument(null, id);
+    });
   }
 
   /** Snap a player's instrument to where they are right now (the C key). Always answers with a toast. */
   calibrate(playerId: PlayerId = 0): boolean {
-    const instrument = this.players[playerId]?.instrument;
+    const instrument = this.slots[playerId]?.instrument;
     let ok = false;
     let text: string;
     if (!instrument?.calibrate) text = `Nothing to calibrate on ${instrument?.id ?? 'that player'}`;
@@ -153,9 +187,25 @@ export class Session {
     for (const c of this.players) c.instrument.resetCalibration?.();
   }
 
-  /** Stub until K2 (generated backing band): records the choice. */
+  /** Generated bass, pad and drums under the players. With it on, the click goes quiet after the count-in. */
   setBacking(on: boolean): void {
     this.config.backing.enabled = on;
+    if (!on) this.backing.releaseAll();
+  }
+
+  /** The band carries the beat (so the click may go quiet) only when it is switched on and built. */
+  private get backingOn(): boolean {
+    return this.config.backing.enabled && this.backing.ready;
+  }
+
+  /** Backing parts a human is playing; the band leaves those out. */
+  private humanParts(): Set<BackingPart> {
+    const parts = new Set<BackingPart>();
+    for (const c of this.players) {
+      const part = partPlayedBy(c.instrument.id);
+      if (part) parts.add(part);
+    }
+    return parts;
   }
 
   /** The foot: play the kick for whoever is on drums (spacebar). Goes through the bus like a real hit. */
@@ -169,7 +219,7 @@ export class Session {
   /** Score a sounding event against the song clock. Free play and a paused band are not judged. */
   private judge(e: InstrumentEvent): void {
     if (this.isPaused || this.isStandby) return;
-    const instrument = this.players[e.playerId]?.instrument.id;
+    const instrument = this.slots[e.playerId]?.instrument.id;
     if (instrument && isScoredEvent(e, instrument)) this.score.hit(e.playerId);
   }
 
@@ -185,14 +235,16 @@ export class Session {
   /** Snapshot of everything the UI and HUD show. Cheap: poll it every frame or on a timer. */
   info(): SessionInfo {
     const hands = this.lastFrame?.hands ?? [];
-    const players: PlayerInfo[] = this.players.map((c) => {
-      const view = c.instrument.view?.() ?? null;
+    // One entry per player, instrument or not, so `players[i]` is always player i.
+    const players: PlayerInfo[] = this.slots.map((c, i) => {
+      const id = i as PlayerId;
+      const view = c?.instrument.view?.() ?? null;
       return {
-        id: c.playerId,
-        instrument: c.instrument.id,
-        hands: hands.filter((h) => h.playerId === c.playerId).length,
+        id,
+        instrument: c?.instrument.id ?? null,
+        hands: hands.filter((h) => h.playerId === id).length,
         calibration: view?.instrument === 'drums' ? view.calibration : 'none',
-        score: this.score.info(c.playerId),
+        score: this.score.info(id),
       };
     });
     return {
@@ -200,7 +252,7 @@ export class Session {
       songTitle: this.songClock?.song.title ?? null,
       songRunning: this.songRunning,
       beatsPerBar: this.songClock?.beatsPerBar ?? 4,
-      instrument: this.players[0].instrument.id,
+      instrument: this.slots[0]?.instrument.id ?? null,
       paused: this.isPaused,
       standby: this.isStandby,
       song: this.songInfo(),
@@ -216,6 +268,7 @@ export class Session {
     const song = this.songClock?.song ?? getSong(id);
     const ctx = this.songContext();
     const running = this.songRunning;
+    const counting = ctx.countIn === true;
     const bar = running ? barAt(song, ctx.bar) : null;
     const nextBar = running ? barAt(song, ctx.bar + 1) : null;
     return {
@@ -223,8 +276,9 @@ export class Session {
       title: song.title,
       bpm: song.bpm,
       bar: ctx.bar,
-      beat: ctx.beat,
-      beatPhase: ctx.beatPhase,
+      // The chart has not started during the count-in: its position is in `countIn`.
+      beat: counting ? 0 : ctx.beat,
+      beatPhase: counting ? 0 : ctx.beatPhase,
       chord: ctx.chord,
       nextChord: nextBar?.chord ?? null,
       lyric: bar?.lyric ?? null,
@@ -232,6 +286,7 @@ export class Session {
       section: bar?.section ?? null,
       barCount: barCount(song),
       running,
+      countIn: { active: counting, beat: counting ? ctx.beat : 0, beats: this.songClock?.countInBeats ?? song.timeSig[0] },
     };
   }
 
@@ -265,6 +320,10 @@ export class Session {
       click: play.click,
       autoKick: play.autoKick && this.mode === 'easy',
       kickVoice: this.drumsVoice(),
+      carried: () => this.backingOn,
+    });
+    this.songClock.onStep((step, time) => {
+      if (this.backingOn) this.backing.step(step, time, this.humanParts());
     });
     this.songClock.start();
     if (this.isPaused || this.isStandby) this.songClock.pause();
@@ -273,6 +332,7 @@ export class Session {
   stopSong(): void {
     this.songClock?.dispose();
     this.songClock = null;
+    this.backing.releaseAll();
   }
 
   private songContext(): SongContext {
@@ -293,6 +353,8 @@ export class Session {
       this.onPhase('audio');
       await this.audio.start();
       if (this.disposed) return this.teardown();
+      // Not awaited: the synths exist at once and the drum samples have the count-in to arrive.
+      void this.backing.load();
 
       this.onPhase('camera');
       await this.camera.start(this.config.camera);
@@ -339,8 +401,10 @@ export class Session {
     if (on === this.isStandby) return;
     this.isStandby = on;
     for (const c of this.players) c.muted = on;
-    if (on) this.songClock?.pause();
-    else if (!this.isPaused) this.songClock?.resume();
+    if (on) {
+      this.songClock?.pause();
+      this.backing.releaseAll();
+    } else if (!this.isPaused) this.songClock?.resume();
   }
 
   get paused(): boolean {
@@ -362,6 +426,7 @@ export class Session {
     }
     this.camera.video.pause();
     this.songClock?.pause();
+    this.backing.releaseAll();
     for (const c of this.players) c.instrument.voice.releaseAll();
     const aspect = this.lastFrame?.aspect ?? this.camera.aspect;
     this.overlay.drawLabel('PAUSED', { x: aspect / 2, y: 0.08 }, '#ffd75c');
@@ -470,6 +535,7 @@ export class Session {
   private teardown(): void {
     this.isPaused = false;
     this.stopSong();
+    this.backing.dispose(); // before the engine: its nodes hang off the master
     this.audio.stop();
     this.replayer?.stop();
     this.replayer = null;

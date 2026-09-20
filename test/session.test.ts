@@ -4,14 +4,16 @@ import { getSong } from '@/song/songs';
 import { Session } from '@/app/session';
 import { bus } from '@/core/bus';
 import { FREEPLAY_CONTEXT } from '@/audio/modes';
-import type { AppEvent, SongContext } from '@/core/types';
+import type { AppEvent, InstrumentId, SongContext } from '@/core/types';
 import { GuitarFx } from '@/render/fx';
 
 /** A Session never touches the camera, model or audio context until `start()`, so fakes are enough. */
-function makeSession(): Session {
+function makeSession(instrument: InstrumentId | null = 'drums'): Session {
   const video = {} as HTMLVideoElement;
   const canvas = { getContext: () => ({}) } as unknown as HTMLCanvasElement;
-  return new Session(video, canvas, structuredClone(DEFAULT_CONFIG));
+  const s = new Session(video, canvas, structuredClone(DEFAULT_CONFIG));
+  s.setInstrument(instrument); // what the UI does for a player who picked one
+  return s;
 }
 
 const seen: AppEvent[] = [];
@@ -23,7 +25,64 @@ afterEach(() => {
 });
 
 describe('Session seams', () => {
-  it('starts player 0 on drums and reports it through info()', () => {
+  it('a new session has no instrument: nothing to play, draw or score, and the full band may back it', () => {
+    const s = makeSession(null);
+    expect(s.controllers).toHaveLength(0);
+    expect(s.info().instrument).toBeNull();
+    expect(s.info().players).toHaveLength(1);
+    expect(s.info().players[0]).toMatchObject({ id: 0, instrument: null, hands: 0, calibration: 'none' });
+    s.kick(); // no drummer: nothing is emitted
+    expect(seen.filter((e) => e.type === 'drum.hit')).toHaveLength(0);
+    expect(s.calibrate()).toBe(false);
+    s.setMode('hard');
+    s.setStandby(true);
+    s.setStandby(false);
+    s.stop();
+  });
+
+  it('setInstrument(null) takes the instrument away and gives it back on request', () => {
+    const s = makeSession();
+    const drums = s.controllers[0];
+    let triggers = 0;
+    drums.instrument.voice.trigger = () => void triggers++;
+    s.setInstrument(null);
+    expect(s.controllers).toHaveLength(0);
+    expect(s.info().players[0].instrument).toBeNull();
+    bus.emit({ type: 'drum.hit', t: 1, playerId: 0, pad: 'snare', velocity: 0.8 });
+    expect(triggers).toBe(0);
+    s.setInstrument('guitar');
+    expect(s.info().instrument).toBe('guitar');
+    s.setInstrument('drums', 1); // players past the first wait for row 16
+    expect(s.info().players).toHaveLength(1);
+    s.stop();
+  });
+
+  it('a player setup that names no instrument for a player clears it (the UI says nothing for "None")', async () => {
+    const s = makeSession();
+    // Done with drums still picked: the same controller stays, score and calibration with it.
+    const drums = s.controllers[0];
+    s.setNumPlayers(1);
+    s.setInstrument('drums', 0);
+    await Promise.resolve();
+    expect(s.controllers[0]).toBe(drums);
+    // Done with "None": only setNumPlayers is called.
+    s.setNumPlayers(1);
+    expect(s.info().instrument).toBe('drums'); // nothing happens inside the tick
+    await Promise.resolve();
+    expect(s.info().instrument).toBeNull();
+    // An explicit null (ask 13) is the same thing, at once.
+    s.setInstrument('guitar');
+    s.setNumPlayers(1);
+    s.setInstrument(null, 0);
+    expect(s.info().instrument).toBeNull();
+    await Promise.resolve();
+    s.setInstrument('bass');
+    await Promise.resolve();
+    expect(s.info().instrument).toBe('bass'); // no sweep left over
+    s.stop();
+  });
+
+  it('reports the drums through info() once the UI picks them', () => {
     const s = makeSession();
     const info = s.info();
     expect(info.instrument).toBe('drums');
@@ -127,6 +186,16 @@ describe('Session seams', () => {
     s.stop();
   });
 
+  it('info().song.countIn is always an object, idle until a song counts in; the backing band builds nothing before start()', () => {
+    const s = makeSession();
+    expect(s.info().song.countIn).toEqual({ active: false, beat: 0, beats: 4 });
+    expect(s.backing.ready).toBe(false);
+    s.setBacking(false); // releasing a band that was never built is a no-op
+    s.pause();
+    s.setStandby(true);
+    s.stop();
+  });
+
   it('scores sounding events against the song clock and reports them through info()', () => {
     const s = makeSession();
     const hit = () => bus.emit({ type: 'drum.hit', t: 1, playerId: 0, pad: 'snare', velocity: 0.8 });
@@ -175,10 +244,18 @@ describe('Session seams', () => {
     // Stand in for a running song clock (the real one needs an audio context).
     const song = getSong('perfect'); // verse G Em C D | chorus G Em C D
     let bar = 0;
-    const context = (): SongContext => ({ ...FREEPLAY_CONTEXT, bpm: song.bpm, bar, chord: song.sections[0].bars[bar % 4].chord });
+    let countIn = false;
+    const context = (): SongContext => ({ ...FREEPLAY_CONTEXT, bpm: song.bpm, bar, beat: 2, beatPhase: 0.5, countIn, chord: song.sections[0].bars[bar % 4].chord });
     (s as unknown as { songClock: unknown }).songClock = { song, running: true, beatsPerBar: 4, context, opts: {}, dispose() {} };
 
     expect(s.info().song).toMatchObject({ title: 'Perfect', running: true, chord: 'G', nextChord: 'Em', section: 'verse' });
+    expect(s.info().song).toMatchObject({ beat: 2, beatPhase: 0.5, countIn: { active: false, beat: 0, beats: 4 } });
+    // During the count-in the chart sits at its top and the position moves to `countIn`.
+    countIn = true;
+    expect(s.info().song).toMatchObject({ bar: 0, beat: 0, beatPhase: 0, chord: 'G', nextChord: 'Em', countIn: { active: true, beat: 2, beats: 4 } });
+    bus.emit({ type: 'drum.hit', t: 1, playerId: 0, pad: 'snare', velocity: 0.8 });
+    expect(s.info().players[0].score).toMatchObject({ perfect: 0, good: 0, miss: 0 }); // not scored
+    countIn = false;
     bar = 3;
     expect(s.info().song).toMatchObject({ chord: 'D', nextChord: 'G' });
     bar = 7; // last bar of the chart: the next chord wraps to the top
@@ -193,6 +270,7 @@ describe('Session seams', () => {
     const video = { pause() {}, play: async () => {} } as unknown as HTMLVideoElement;
     const canvas = { getContext: () => ({}) } as unknown as HTMLCanvasElement;
     const s = new Session(video, canvas, structuredClone(DEFAULT_CONFIG));
+    s.setInstrument('drums');
     s.overlay.drawLabel = () => {};
     // Stand in for a started session: pause() is a no-op without a frame loop.
     (s as unknown as { loop: { start(): void; stop(): void } }).loop = { start() {}, stop() {} };

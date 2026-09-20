@@ -49,6 +49,24 @@ export function midiToNote(midi: number): string {
   return `${NOTE_NAMES[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
 }
 
+export interface ChordTones {
+  root: number;
+  third: number;
+  fifth: number;
+}
+
+/**
+ * Root, third and fifth of a chord as MIDI numbers, the root being the lowest
+ * one at or above `lowest`. null for an unparseable name. The backing band and
+ * the bass pick their register with `lowest`.
+ */
+export function chordTones(chord: ChordName, lowest: number): ChordTones | null {
+  const p = parseChord(chord);
+  if (!p) return null;
+  const root = lowest + ((((p.root - lowest) % 12) + 12) % 12);
+  return { root, third: root + (p.minor ? 3 : 4), fifth: root + 7 };
+}
+
 /** The root in the guitar's bottom octave, E2..D#3. */
 function rootMidi(root: number): number {
   const e = 4; // pitch class of E

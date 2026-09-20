@@ -22,6 +22,43 @@ export function positionAt(seconds: number, bpm: number, beatsPerBar: number): B
   return { bar, beat, beatPhase: inBar - beat, beatsTotal };
 }
 
+export interface CountedPosition extends BeatPosition {
+  /** true while the count-in runs; then `bar` is 0 and `beat` counts inside the count-in. */
+  countIn: boolean;
+}
+
+/**
+ * Position on a clock that plays `countInBeats` clicks before bar 0 of the
+ * chart. The count-in is whole beats, so `beatPhase` runs straight through it.
+ */
+export function positionWithCountIn(seconds: number, bpm: number, beatsPerBar: number, countInBeats: number): CountedPosition {
+  const lead = Math.max(0, Math.round(countInBeats));
+  const raw = positionAt(seconds, bpm, beatsPerBar);
+  if (raw.beatsTotal < lead) {
+    const beat = Math.floor(raw.beatsTotal);
+    return { bar: 0, beat, beatPhase: raw.beatsTotal - beat, beatsTotal: 0, countIn: true };
+  }
+  return { ...positionAt(seconds - (lead * 60) / bpm, bpm, beatsPerBar), countIn: false };
+}
+
+export interface GridStep {
+  bar: number;
+  beat: number;
+  /** 0 = on the beat, 1 = the eighth after it. */
+  sub: 0 | 1;
+  countIn: boolean;
+}
+
+/** The `n`-th eighth-note step since the clock started, count-in first. */
+export function stepAt(n: number, beatsPerBar: number, countInBeats: number): GridStep {
+  const lead = Math.max(0, Math.round(countInBeats));
+  const sub = (n % 2) as 0 | 1;
+  const beats = Math.floor(n / 2);
+  if (beats < lead) return { bar: 0, beat: beats, sub, countIn: true };
+  const count = beats - lead;
+  return { bar: Math.floor(count / beatsPerBar), beat: count % beatsPerBar, sub, countIn: false };
+}
+
 /**
  * Easy-mode drum groove: which drum a hit "wants" at a position in the bar.
  * The hit is quantized to the nearest eighth note only to pick the sound; it
