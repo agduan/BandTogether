@@ -226,6 +226,8 @@ function Stage({
   const [playerCount, setPlayerCount] = useState<PlayerCount>(config.players.count >= 2 ? 2 : 1);
   const [players, setPlayers] = useState<[PlayerSetup, PlayerSetup]>(() => structuredClone(PLAYER_DEFAULTS));
   const [editingPlayers, setEditingPlayers] = useState(false);
+  /** The opening screen comes first; its button leads to player setup. */
+  const [welcomed, setWelcomed] = useState(false);
   const playerSetupRef = useRef({ count: playerCount, players });
   const [mode, setMode] = useState<PlayMode>(config.play.mode);
   const [songId, setSongId] = useState(config.play.song);
@@ -503,6 +505,7 @@ function Stage({
 
   const live = active && phase === 'running';
   const showPlayerSetup = !active || editingPlayers;
+  const showWelcome = !active && !welcomed;
   const status = !live
     ? { tone: 'wait', label: active ? PHASE_TEXT[phase] || 'Starting…' : 'Camera off' }
     : paused
@@ -512,7 +515,7 @@ function Stage({
         : { tone: 'idle', label: 'Ready' };
 
   return (
-    <section className="stage-wrap">
+    <section className="stage-wrap" data-prestart={active ? undefined : ''}>
       <div className="console">
         <div className="console__bar">
           <div className="control-section">
@@ -806,7 +809,15 @@ function Stage({
               <strong>{Math.max(1, songInfo.countIn.beats - songInfo.countIn.beat)}</strong>
             </div>
           )}
-          {showPlayerSetup ? (
+          {showWelcome ? (
+            <div className="stage__welcome">
+              <p className="stage__kicker">Acapella is way overrated</p>
+              <h2>Ready to band together?</h2>
+              <button className="stage__start" type="button" onClick={() => setWelcomed(true)}>
+                <span aria-hidden="true">▶</span> Start
+              </button>
+            </div>
+          ) : showPlayerSetup ? (
             <div className="player-setup" data-editing={active ? '' : undefined}>
               <div className="player-setup__head">
                 <div>
