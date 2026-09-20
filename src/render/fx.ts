@@ -13,9 +13,9 @@ import { kitGeometry, stickTip, type PadGeometry } from '@/detectors/drumHitDete
 const PAD_COLORS: Record<string, string> = {
   hihat: '#ffd75c',
   snare: '#ff5c8a',
-  tom1: '#ff9f5c',
+  tom1: '#5cd6ff',
   tom2: '#5cd6ff',
-  crash: '#f5e663',
+  crash: '#8aff5c',
   kick: '#b48cff',
 };
 const DEFAULT_PAD_COLOR = '#ffffff';
@@ -156,7 +156,7 @@ export class DrumsFx implements OverlayLayer {
     ctx.font = `600 ${Math.round(13 * scale)}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(pad.id, c.x, c.y - ry - 10 * scale);
+    ctx.fillText(pad.id === 'tom1' ? 'tom' : pad.id, c.x, c.y - ry - 10 * scale);
     ctx.restore();
   }
 

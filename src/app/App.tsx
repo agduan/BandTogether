@@ -425,10 +425,6 @@ function Stage({
     if (s?.songRunning) s.startSong(id);
   };
 
-  const resetPlacement = () => {
-    sessionRef.current?.resetCalibration();
-  };
-
   const toggleBacking = () => {
     const next = !backingEnabled;
     setBackingEnabled(next);
@@ -595,21 +591,6 @@ function Stage({
           </div>
 
           <div className="control-section">
-            <span className="control-label">Placement</span>
-            <div className="control-actions">
-              <button className="btn" type="button" onClick={() => sessionRef.current?.calibrate()} disabled={!live}>
-                ◎ Calibrate
-              </button>
-              <button className="btn btn--quiet" type="button" onClick={resetPlacement} disabled={!live}>
-                Reset
-              </button>
-            </div>
-            <span className="control-note">
-              Press <kbd>C</kbd> in playing position.
-            </span>
-          </div>
-
-          <div className="control-section">
             <span className="control-label">Backing mix</span>
             <div className="sidebar-toggles">
               <button
@@ -622,7 +603,7 @@ function Stage({
               >
                 <span aria-hidden="true">{backingEnabled ? '●' : '○'}</span>
                 Backing
-                <strong>{backingEnabled ? 'On' : 'Off'}</strong>
+                <strong>{backingEnabled ? 'All On' : 'All Off'}</strong>
               </button>
               <button
                 type="button"

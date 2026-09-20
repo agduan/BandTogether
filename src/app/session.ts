@@ -35,7 +35,10 @@ export interface SessionStats {
 
 export type SessionPhase = 'idle' | 'camera' | 'model' | 'audio' | 'running' | 'error';
 
-const HAND_COLORS = ['#ff5c8a', '#5cd6ff', '#ffd75c', '#8aff5c'];
+const HAND_COLORS = [
+  { Left: '#ff5c8a', Right: '#5cd6ff' },
+  { Left: '#8aff5c', Right: '#ffd75c' },
+] as const;
 
 /**
  * Top-level runtime: camera → hand landmarker → frame adapter → instrument
@@ -656,8 +659,8 @@ export class Session {
 
     if (this.config.debug.skeleton) {
       for (const hand of frame.hands) {
-        // Colour by track id so a stable identity is visible at a glance.
-        const color = HAND_COLORS[(hand.trackId - 1) % HAND_COLORS.length];
+        // Stable semantic colours: P1 left/right are pink/blue; P2 are green/yellow.
+        const color = HAND_COLORS[hand.playerId]?.[hand.handedness] ?? '#ffffff';
         this.overlay.drawHand(hand.smooth, { color });
         // Corrected + voted label. Raise only your right hand: it must read "R".
         // If it reads "L", set vision.swapHandedness=true (URL: ?vision.swapHandedness=true).
